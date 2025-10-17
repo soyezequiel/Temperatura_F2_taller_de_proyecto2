@@ -3,6 +3,8 @@
 #include <DHT.h>
 #include <Adafruit_AHTX0.h>
 #include <WiFi.h>
+//para chequear si el reinicio es por el wdt
+// #include "esp_system.h"
 
 // Configuracion Wi-Fi
 const char* ssid = "electricidad";
@@ -16,11 +18,12 @@ String header;
 #define SDA_2 18
 #define SCL_2 19
 #define DHTPIN1 13
-#define DHTPIN2 12
+#define DHTPIN2 14
 #define DHTTYPE DHT11
 #define RELAY_PIN 15
-#define LED 2
+#define LED 4
 
+const int INTERVALO = 1000;     // ms entre lecturas
 // Limites de temperatura
 float tempLimit = 0.0;
 float criticalTempLimit = 0.0;
@@ -47,6 +50,19 @@ bool relayLocked = false;
 int tiempo = 0;
 String tiempoFormato = "00:00:00";
 
+// Flags de inicialización
+bool mlx_ok  = false;
+bool aht1_ok = false;
+bool aht2_ok = false;
+
+
+//para chequear si el reinicio es por el wdt
+// void printResetReason() {
+//   esp_reset_reason_t r = esp_reset_reason();
+//   Serial.print("Reset reason: ");
+//   Serial.println(r); // ESP_RST_TASK_WDT=3, ESP_RST_WDT=4, etc.
+// }
+
 // Funcion para convertir float a String con formato controlado
 String formatFloat(float value, int precision = 2) {
   char buffer[10] = "";
@@ -68,42 +84,102 @@ String convertirASegundos(int segundosTotales) {
 
 // Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
 void sensorTask(void *pvParameters) {
+  bool error = false;
   for (;;) {
-    sensors_event_t humidity1, temp1, humidity2, temp2;
-    aht10_1.getEvent(&humidity1, &temp1);
-    aht10_2.getEvent(&humidity2, &temp2);
 
-    ahtTemp1 = temp1.temperature;
-    ahtHum1 = humidity1.relative_humidity;
-    ahtTemp2 = temp2.temperature;
-    ahtHum2 = humidity2.relative_humidity;
 
-    /*
-    myDelay(5);
-    dhtTemp1Aux = dht1.readTemperature();
-    myDelay(5);
-    dhtHum1Aux = dht1.readHumidity();
-    myDelay(5);
+
+
+    // ----- DHT11 #1 -----
+    float dhtTemp1Aux = dht1.readTemperature();
+    float dhtHum1Aux = dht1.readHumidity();
+    if (isnan(dhtTemp1Aux) || isnan(dhtHum1Aux)) { Serial.println("❌ DHT #1 lectura inválida"); error = true; }
+    else {
+            dhtTemp1 = dhtTemp1Aux;
+            dhtHum1 = dhtHum1Aux;
+            Serial.printf("DHT #(interno) → T: %.2f °C | H: %.2f %%\n", dhtTemp1, dhtHum1);
+    } 
+    // ----- DHT11 #2 -----
     dhtTemp2Aux = dht2.readTemperature();
-    myDelay(5);
     dhtHum2Aux = dht2.readHumidity();
-
-    if (!isnan(dhtTemp1Aux) && !isnan(dhtHum1Aux)) {
-      dhtTemp1 = dhtTemp1Aux;
-      dhtHum1 = dhtHum1Aux;
-    } else {
-      Serial.println("Error en DHT1");
+    if (isnan(dhtTemp2Aux) || isnan(dhtHum2Aux)) { Serial.println("❌ DHT #2 lectura inválida"); error = true; }
+    else{
+        dhtTemp2 = dhtTemp2Aux;
+        dhtHum2 = dhtHum2Aux;
+        Serial.printf("DHT #(externo) → T: %.2f °C | H: %.2f %%\n", dhtTemp2Aux, dhtHum2Aux);
     }
-    if (!isnan(dhtTemp2Aux) && !isnan(dhtHum2Aux)) {
-      dhtTemp2 = dhtTemp2Aux;
-      dhtHum2 = dhtHum2Aux;
-    } else {
-      Serial.println("Error en DHT2");
-    }
-    */
 
-    mlxTempObj = mlx.readObjectTempC();
-    mlxTempAmb = mlx.readAmbientTempC();
+
+
+
+
+    // Lee AHT
+    sensors_event_t humidity1, temp1, humidity2, temp2;
+    //aht10_1.getEvent(&humidity1, &temp1);
+    // ----- AHT #1 (Wire) -----
+    // ahtTemp1 = 0;
+    // ahtHum1 = 0;
+    if (aht1_ok) {
+      humidity1, temp1; aht10_1.getEvent(&humidity1, &temp1);
+      if (isnan(temp1.temperature) || isnan(humidity1.relative_humidity)) {
+        Serial.println("❌ AHT #(interno) lectura inválida "); error = true;
+        ahtTemp1 = -100;
+        ahtHum1 = -100;
+      } else {
+        Serial.printf("AHT #(interno) → T: %.2f °C | H: %.2f %%\n", temp1.temperature, humidity1.relative_humidity);
+            ahtTemp1 = temp1.temperature;
+            ahtHum1 = humidity1.relative_humidity;
+      }
+    } else { Serial.println("⚠️ AHT #(interno) no inicializado"); error = true; 
+        ahtTemp1 = 0;
+        ahtHum1 = 0;
+    }
+
+
+
+
+
+
+    //aht10_2.getEvent(&humidity2, &temp2);
+    // ----- AHT #1 (Wire) -----
+    // ahtTemp2 = 0;
+    // ahtHum2 = 0;
+    if (aht2_ok) {
+      humidity2, temp2; aht10_2.getEvent(&humidity2, &temp2);
+      if (isnan(temp2.temperature) || isnan(humidity2.relative_humidity)) {
+        Serial.println("❌ AHT #(externo) lectura inválida "); error = true;
+        ahtTemp1 = -100;
+        ahtHum1 = -100;
+      } else {
+        Serial.printf("AHT #(externo) → T: %.2f °C | H: %.2f %%\n", temp2.temperature, humidity2.relative_humidity);
+        ahtTemp2 = temp2.temperature;
+        ahtHum2 = humidity2.relative_humidity;
+      }
+    } else { Serial.println("⚠️ AHT #(externo) no inicializado"); error = true; 
+        ahtTemp1 = 0;
+        ahtHum1 = 0;
+    }
+
+
+
+
+    
+
+    
+    // Lee omfrarojo
+    mlxTempObj = 0;
+    mlxTempAmb = 0;
+    // ----- MLX90614 -----
+    if (mlx_ok) {
+      mlxTempObj = mlx.readObjectTempC();
+      mlxTempAmb = mlx.readAmbientTempC();
+      if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { Serial.println("❌ MLX90614 lectura inválida"); error = true; }
+      else Serial.printf("MLX90614 → Tamb: %.2f °C | Tobj: %.2f °C\n", mlxTempAmb, mlxTempObj);
+    } else {
+      Serial.println("⚠️ MLX90614 no inicializado");
+      error = true;
+    }
+
 
     if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
       if (mlxTempObj >= tempLimit) {
@@ -120,6 +196,9 @@ void sensorTask(void *pvParameters) {
       }
     }
 
+
+
+
     if (ahtTemp1 >= criticalTempLimit && criticalTempLimitConfigured) {
       relayLocked = true;
       relayState = false;
@@ -130,6 +209,9 @@ void sensorTask(void *pvParameters) {
     tiempoFormato = convertirASegundos(tiempo);
     tiempo += 1; 
     vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso de 1 segundo en la tarea
+
+    Serial.println("-----------------------------");
+    //delay(INTERVALO);
   }
 }
 
@@ -509,11 +591,24 @@ void setup() {
 
   Wire.begin(SDA_1, SCL_1);
   I2C_2.begin(SDA_2, SCL_2);
-  aht10_1.begin(&Wire);
-  aht10_2.begin(&I2C_2);
-  mlx.begin();
+
+
+
+
+  aht1_ok = aht10_1.begin(&Wire);
+  aht2_ok = aht10_2.begin(&I2C_2);
+  mlx_ok  = mlx.begin();
   dht1.begin();
   dht2.begin();
+
+  // para debug
+  Serial.println(mlx_ok  ? "✅ MLX90614 listo (Wire)"        : "❌ MLX90614 no inicializó");
+  Serial.println(aht1_ok ? "✅ AHT #1 listo (Wire)"          : "❌ AHT #1 falló");
+  Serial.println(aht2_ok ? "✅ AHT #2 listo (Wire1)"         : "❌ AHT #2 falló");
+  Serial.println("✅ DHT11 #1 y #2 inicializados");
+  Serial.println("=============================\n");
+
+
   pinMode(LED, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(LED, LOW);
@@ -521,8 +616,13 @@ void setup() {
   delay(1000);
   xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
+
+  //para chequear si el reinicio es por el wdt
+  // delay(2000);
+  // printResetReason();
 }
 
 void loop() {
   // Las tareas corren en nucleos separados
+
 }
