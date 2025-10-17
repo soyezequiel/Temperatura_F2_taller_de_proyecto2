@@ -3,6 +3,7 @@
 #include <DHT.h>
 #include <Adafruit_AHTX0.h>
 #include <WiFi.h>
+
 //para chequear si el reinicio es por el wdt
 // #include "esp_system.h"
 
@@ -90,92 +91,43 @@ void sensorTask(void *pvParameters) {
   }
 }
 
-
-
-// Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
-void leerSensores() {
-  bool error = false;
-  for (;;) {
-
-
-
-
-    // ----- DHT11 #1 -----
-    float dhtTemp1Aux = dht1.readTemperature();
-    float dhtHum1Aux = dht1.readHumidity();
-    if (isnan(dhtTemp1Aux) || isnan(dhtHum1Aux)) { Serial.println("❌ DHT #1 lectura inválida"); error = true; }
+bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum) {
+    bool error;
+    vTaskDelay(200 / portTICK_PERIOD_MS); // duerme x segundo sin bloquear CPU
+    float dhtTempAux = dht.readTemperature();
+    vTaskDelay(200 / portTICK_PERIOD_MS); // duerme x segundo sin bloquear CPU
+    float dhtHumAux = dht.readHumidity();
+    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { Serial.println("❌ DHT #1 lectura inválida"); error = true; }
     else {
-            dhtTemp1 = dhtTemp1Aux;
-            dhtHum1 = dhtHum1Aux;
-            Serial.printf("DHT #(interno) → T: %.2f °C | H: %.2f %%\n", dhtTemp1, dhtHum1);
-    } 
-    // ----- DHT11 #2 -----
-    dhtTemp2Aux = dht2.readTemperature();
-    dhtHum2Aux = dht2.readHumidity();
-    if (isnan(dhtTemp2Aux) || isnan(dhtHum2Aux)) { Serial.println("❌ DHT #2 lectura inválida"); error = true; }
-    else{
-        dhtTemp2 = dhtTemp2Aux;
-        dhtHum2 = dhtHum2Aux;
-        Serial.printf("DHT #(externo) → T: %.2f °C | H: %.2f %%\n", dhtTemp2Aux, dhtHum2Aux);
+            dhtTemp = dhtTempAux;
+            dhtHum = dhtHumAux;
+            Serial.printf("DHT #(interno) → T: %.2f °C | H: %.2f %%\n", dhtTemp, dhtHum);
     }
-
-
-
-
-
-    // Lee AHT
-    sensors_event_t humidity1, temp1, humidity2, temp2;
-    //aht10_1.getEvent(&humidity1, &temp1);
-    // ----- AHT #1 (Wire) -----
-    // ahtTemp1 = 0;
-    // ahtHum1 = 0;
-    if (aht1_ok) {
-      humidity1, temp1; aht10_1.getEvent(&humidity1, &temp1);
-      if (isnan(temp1.temperature) || isnan(humidity1.relative_humidity)) {
+    return error; 
+}
+bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion) {
+    bool error;
+    if (aht_ok) {
+      sensors_event_t humidityEvent, tempEvent;
+      aht10.getEvent(&humidityEvent, &tempEvent);
+      if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
         Serial.println("❌ AHT #(interno) lectura inválida "); error = true;
-        ahtTemp1 = -100;
-        ahtHum1 = -100;
+        temp = -100;
+        humidity = -100;
       } else {
-        Serial.printf("AHT #(interno) → T: %.2f °C | H: %.2f %%\n", temp1.temperature, humidity1.relative_humidity);
-            ahtTemp1 = temp1.temperature;
-            ahtHum1 = humidity1.relative_humidity;
+        Serial.printf("AHT #(%s) → T: %.2f °C | H: %.2f %% \n",ubicacion, tempEvent.temperature, humidityEvent.relative_humidity);
+            temp = tempEvent.temperature;
+            humidity = humidityEvent.relative_humidity;
       }
     } else { Serial.println("⚠️ AHT #(interno) no inicializado"); error = true; 
-        ahtTemp1 = 0;
-        ahtHum1 = 0;
+        temp = 0;
+        humidity = 0;
     }
+    return error; 
+}
 
-
-
-
-
-
-    //aht10_2.getEvent(&humidity2, &temp2);
-    // ----- AHT #1 (Wire) -----
-    // ahtTemp2 = 0;
-    // ahtHum2 = 0;
-    if (aht2_ok) {
-      humidity2, temp2; aht10_2.getEvent(&humidity2, &temp2);
-      if (isnan(temp2.temperature) || isnan(humidity2.relative_humidity)) {
-        Serial.println("❌ AHT #(externo) lectura inválida "); error = true;
-        ahtTemp1 = -100;
-        ahtHum1 = -100;
-      } else {
-        Serial.printf("AHT #(externo) → T: %.2f °C | H: %.2f %%\n", temp2.temperature, humidity2.relative_humidity);
-        ahtTemp2 = temp2.temperature;
-        ahtHum2 = humidity2.relative_humidity;
-      }
-    } else { Serial.println("⚠️ AHT #(externo) no inicializado"); error = true; 
-        ahtTemp1 = 0;
-        ahtHum1 = 0;
-    }
-
-
-
-
-    
-
-    
+bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
+    bool error;
     // Lee omfrarojo
     mlxTempObj = 0;
     mlxTempAmb = 0;
@@ -189,7 +141,18 @@ void leerSensores() {
       Serial.println("⚠️ MLX90614 no inicializado");
       error = true;
     }
+    return error; 
+}
 
+// Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
+void leerSensores() {
+  bool error = false;
+  for (;;) {
+    leerDHT(dht1, dhtTemp1, dhtHum1);
+    leerDHT(dht2, dhtTemp2, dhtHum2);
+    leerAHT(aht10_1, aht1_ok,ahtTemp1, ahtHum1, "interno");
+    leerAHT(aht10_2, aht2_ok,ahtTemp2, ahtHum2, "externo");
+    leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
 
     if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
       if (mlxTempObj >= tempLimit) {
@@ -205,9 +168,6 @@ void leerSensores() {
         //Serial.println(tempLimit);
       }
     }
-
-
-
 
     if (ahtTemp1 >= criticalTempLimit && criticalTempLimitConfigured) {
       relayLocked = true;
