@@ -70,7 +70,6 @@ String formatFloat(float value, int precision = 2) {
   dtostrf(value, 4, precision, buffer);
   return String(buffer);
 }
-
 //Funcion para convertir segundos a formato hh:mm:ss
 String convertirASegundos(int segundosTotales) {
     int horas = segundosTotales / 3600;
@@ -82,36 +81,25 @@ String convertirASegundos(int segundosTotales) {
 
     return String(tiempoFormato); // Convertir a string y devolver
 }
-
-
-void sensorTask(void *pvParameters) {
-  for(;;) {
-    leerSensores();
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // duerme 1 segundo sin bloquear CPU
-  }
-}
-
-bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum) {
+bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="interno") {
     bool error;
-    vTaskDelay(200 / portTICK_PERIOD_MS); // duerme x segundo sin bloquear CPU
     float dhtTempAux = dht.readTemperature();
-    vTaskDelay(200 / portTICK_PERIOD_MS); // duerme x segundo sin bloquear CPU
     float dhtHumAux = dht.readHumidity();
-    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { Serial.println("❌ DHT #1 lectura inválida"); error = true; }
+    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { Serial.printf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
     else {
             dhtTemp = dhtTempAux;
             dhtHum = dhtHumAux;
-            Serial.printf("DHT #(interno) → T: %.2f °C | H: %.2f %%\n", dhtTemp, dhtHum);
+            Serial.printf("DHT #(%s) → T: %.2f °C | H: %.2f %%\n",ubicacion, dhtTemp, dhtHum);
     }
     return error; 
 }
-bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion) {
+bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion="interno") {
     bool error;
     if (aht_ok) {
       sensors_event_t humidityEvent, tempEvent;
       aht10.getEvent(&humidityEvent, &tempEvent);
       if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
-        Serial.println("❌ AHT #(interno) lectura inválida "); error = true;
+        Serial.printf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
         temp = -100;
         humidity = -100;
       } else {
@@ -119,13 +107,12 @@ bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity,
             temp = tempEvent.temperature;
             humidity = humidityEvent.relative_humidity;
       }
-    } else { Serial.println("⚠️ AHT #(interno) no inicializado"); error = true; 
+    } else { Serial.printf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
         temp = 0;
         humidity = 0;
     }
     return error; 
 }
-
 bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
     bool error;
     // Lee omfrarojo
@@ -143,17 +130,7 @@ bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &ml
     }
     return error; 
 }
-
-// Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
-void leerSensores() {
-  bool error = false;
-  for (;;) {
-    leerDHT(dht1, dhtTemp1, dhtHum1);
-    leerDHT(dht2, dhtTemp2, dhtHum2);
-    leerAHT(aht10_1, aht1_ok,ahtTemp1, ahtHum1, "interno");
-    leerAHT(aht10_2, aht2_ok,ahtTemp2, ahtHum2, "externo");
-    leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
-
+void releUpdate(){
     if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
       if (mlxTempObj >= tempLimit) {
         //relayState = false;
@@ -168,30 +145,46 @@ void leerSensores() {
         //Serial.println(tempLimit);
       }
     }
-
-    if (ahtTemp1 >= criticalTempLimit && criticalTempLimitConfigured) {
-      relayLocked = true;
-      relayState = false;
-      digitalWrite(RELAY_PIN, LOW);
-      digitalWrite(LED, LOW);
-      //Serial.println("Limite critico alcanzado. Rele apagado definitivamente.");
-    }
-    tiempoFormato = convertirASegundos(tiempo);
-    tiempo += 1; 
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso de 1 segundo en la tarea
-
-    Serial.println("-----------------------------");
-    //delay(INTERVALO);
+}
+void releUpdateDesbloqueo(){
+  if (ahtTemp1 >= criticalTempLimit && criticalTempLimitConfigured) {
+    relayLocked = true;
+    relayState = false;
+    digitalWrite(RELAY_PIN, LOW);
+    digitalWrite(LED, LOW);
+    //Serial.println("Limite critico alcanzado. Rele apagado definitivamente.");
   }
 }
-
+// Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
+void leerSensores() {
+  bool error = false;
+  leerDHT(dht1, dhtTemp1, dhtHum1);
+  leerDHT(dht2, dhtTemp2, dhtHum2, "externo");
+  leerAHT(aht10_1, aht1_ok,ahtTemp1, ahtHum1);
+  leerAHT(aht10_2, aht2_ok,ahtTemp2, ahtHum2, "externo");
+  leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
+  Serial.println("-----------------------------");
+}
+void sensorTask(void *pvParameters) {
+  for(;;) {
+    leerSensores();
+    releUpdate();
+    releUpdateDesbloqueo();
+    tiempoFormato = convertirASegundos(tiempo);
+    tiempo += 1; 
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // duerme 1 segundo sin bloquear CPU
+  }
+}
 // Funcion de tarea para el nucleo 2: gestionar la interfaz web
 void webServerTask(void *pvParameters) {
   for (;;) {
     WiFiClient client = server.available();
     if (client) {
       String currentLine = "";
+       unsigned long tLast = millis();
       while (client.connected()) {
+        // Ceder SIEMPRE en el bucle
+        vTaskDelay(1);
         if (client.available()) {
           char c = client.read();
           header += c;
@@ -490,11 +483,13 @@ void webServerTask(void *pvParameters) {
             currentLine += c;
           }
         }
+        // Timeout de conexión para no quedarte pegado eternamente
+        if (millis() - tLast > 2000) break; // 2 s sin tráfico -> cortar
       }
       header = "";
       client.stop();
     }
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 
@@ -535,7 +530,11 @@ void setup() {
   digitalWrite(LED, LOW);
   digitalWrite(RELAY_PIN, LOW);
   delay(1000);
-  xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 0);
+  //xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 0);
+  //xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
+
+  //intento de arreglar el dht
+  xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
 
   //para chequear si el reinicio es por el wdt
