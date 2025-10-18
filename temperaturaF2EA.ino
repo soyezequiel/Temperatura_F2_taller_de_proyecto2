@@ -179,18 +179,23 @@ void sensorTask(void *pvParameters) {
 // Funcion de tarea para el nucleo 2: gestionar la interfaz web
 void webServerTask(void *pvParameters) {
   for (;;) {
+    //Esperar conexión entrante de un cliente HTTP (navegador)
     WiFiClient client = server.available();
     if (client) {
       String currentLine = "";
       unsigned long tLast = millis();
+      //Mientras el cliente siga conectado
       while (client.connected()) {
         // Ceder SIEMPRE en el bucle
         vTaskDelay(1);
+        //Leer datos disponibles del cliente
         if (client.available()) {
           char c = client.read();
           header += c;
           if (c == '\n') {
+            //Fin de línea → interpretar solicitud HTTP recibida
             if (currentLine.length() == 0) {
+              //Solicitud a /sensordata → devuelve JSON de sensores
               if (header.indexOf("GET /sensordata") >= 0) {
                 client.println("HTTP/1.1 200 OK");
                 client.println("Content-Type: application/json");
@@ -214,11 +219,10 @@ void webServerTask(void *pvParameters) {
                                    (!tempLimitConfigured || !criticalTempLimitConfigured ? "Rele deshabilitado hasta que ambos limites sean configurados." :
                                    (relayState ? "Rele encendido" : "Encendido del rele habilitado."))) + "\"";
                 jsonResponse += "}";
-
                 client.print(jsonResponse);
                 break;
               }
-
+              //Solicitud a /toggleRelay → alterna el estado del relé
               if (header.indexOf("GET /toggleRelay") >= 0) {
                 if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured) {
                   relayState = !relayState;
@@ -229,7 +233,7 @@ void webServerTask(void *pvParameters) {
                 client.println("Connection: close");
                 client.println();
               }
-
+              //Configuración de límite de temperatura normal
               if (header.indexOf("GET /setlimit/?temp=") >= 0) {
                 int pos = header.indexOf("GET /setlimit/?temp=") + 20;
                 String tempValue = header.substring(pos, header.indexOf(" ", pos));
@@ -246,6 +250,7 @@ void webServerTask(void *pvParameters) {
                   tempLimitConfigured = true;
                 }
               }
+              // Configuración de límite crítico de temperatura
               if (header.indexOf("GET /setcriticallimit/?temp=") >= 0) {
                 int pos = header.indexOf("GET /setcriticallimit/?temp=") + 28;
                 String tempValue = header.substring(pos, header.indexOf(" ", pos));
@@ -262,6 +267,7 @@ void webServerTask(void *pvParameters) {
                   criticalTempLimitConfigured = true;
                 }
               }
+              //Página principal "/" → devuelve el HTML desde PROGMEM
               client.println("HTTP/1.1 200 OK");
               client.println("Content-type:text/html");
               client.println("Connection: close");
@@ -275,12 +281,14 @@ void webServerTask(void *pvParameters) {
             currentLine += c;
           }
         }
-        // Timeout de conexión para no quedarte pegado eternamente
+        //Corta si pasan 2 segundos sin actividad (timeout)
         if (millis() - tLast > 2000) break; // 2 s sin tráfico -> cortar
       }
+      //Fin de conexión → limpiar encabezado y cerrar socket
       header = "";
       client.stop();
     }
+    //Esperar un pequeño tiempo antes de revisar el siguiente cliente
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
