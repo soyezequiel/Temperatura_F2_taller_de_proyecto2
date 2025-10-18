@@ -4,7 +4,26 @@
 #include <Adafruit_AHTX0.h>
 #include <WiFi.h>
 
-#include "web_page.h"
+#define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
+
+#include "web_page_core.h"
+#if ENABLE_CHART
+  #include "web_chart.h"
+#endif
+#include "web_send.h"
+
+// ===== CONFIGURACIÓN GLOBAL DE TIEMPOS =====
+
+// Frecuencia de escaneo de sensores (en milisegundos)
+#define SENSOR_INTERVAL_MS   1000   // cada 1 s
+
+// Frecuencia de actualización de la gráfica y del fetch /sensordata (en ms)
+#define WEB_UPDATE_MS        1000   // cada 1 s
+
+// Timeout de cliente web (inactividad)
+#define WEB_CLIENT_TIMEOUT_MS 2000  // 2 s sin tráfico = cortar conexión
+
+
 //para chequear si el reinicio es por el wdt
 // #include "esp_system.h"
 
@@ -25,7 +44,7 @@ String header;
 #define RELAY_PIN 15
 #define LED 4
 
-const int INTERVALO = 1000;     // ms entre lecturas
+
 // Limites de temperatura
 float tempLimit = 0.0;
 float criticalTempLimit = 0.0;
@@ -173,7 +192,7 @@ void sensorTask(void *pvParameters) {
     releUpdateDesbloqueo();
     tiempoFormato = convertirASegundos(tiempo);
     tiempo += 1; 
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // duerme 1 segundo sin bloquear CPU
+    vTaskDelay(pdMS_TO_TICKS(SENSOR_INTERVAL_MS));
   }
 }
 // Funcion de tarea para el nucleo 2: gestionar la interfaz web
@@ -201,6 +220,7 @@ void webServerTask(void *pvParameters) {
                 client.println("Content-Type: application/json");
                 client.println("Connection: close");
                 client.println();
+
 
                 String jsonResponse = "{";
                 jsonResponse += "\"tiempo\": \"" + tiempoFormato + "\",";
@@ -272,7 +292,20 @@ void webServerTask(void *pvParameters) {
               client.println("Content-type:text/html");
               client.println("Connection: close");
               client.println();
-              client.print(FPSTR(index_html));
+
+                String html = FPSTR(index_head);
+                html.replace("%UPDATE_MS%", String(WEB_UPDATE_MS));
+                client.print(html);
+
+                // inyectar (o no) la gráfica
+                #if ENABLE_CHART
+                  sendPROGMEM(client, chart_block);
+                #endif
+
+                // cierre y scripts base
+                sendPROGMEM(client, index_tail);
+
+    
               break;
             } else {
               currentLine = "";
@@ -282,7 +315,7 @@ void webServerTask(void *pvParameters) {
           }
         }
         //Corta si pasan 2 segundos sin actividad (timeout)
-        if (millis() - tLast > 2000) break; // 2 s sin tráfico -> cortar
+        if (millis() - tLast > WEB_CLIENT_TIMEOUT_MS) break;
       }
       //Fin de conexión → limpiar encabezado y cerrar socket
       header = "";
