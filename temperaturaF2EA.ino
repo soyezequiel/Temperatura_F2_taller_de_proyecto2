@@ -4,6 +4,7 @@
 #include <Adafruit_AHTX0.h>
 #include <WiFi.h>
 
+#include "web_page.h"
 //para chequear si el reinicio es por el wdt
 // #include "esp_system.h"
 
@@ -181,7 +182,7 @@ void webServerTask(void *pvParameters) {
     WiFiClient client = server.available();
     if (client) {
       String currentLine = "";
-       unsigned long tLast = millis();
+      unsigned long tLast = millis();
       while (client.connected()) {
         // Ceder SIEMPRE en el bucle
         vTaskDelay(1);
@@ -261,220 +262,11 @@ void webServerTask(void *pvParameters) {
                   criticalTempLimitConfigured = true;
                 }
               }
-
               client.println("HTTP/1.1 200 OK");
               client.println("Content-type:text/html");
               client.println("Connection: close");
               client.println();
-
-              client.println("<!DOCTYPE html><html lang='es'><head>");
-              client.println("<meta charset='UTF-8'>");
-              client.println("<meta name='viewport' content='width=device-width, initial-scale=1'>");
-              client.println("<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>");
-              client.println("<script src='https://cdn.plot.ly/plotly-locale-es-latest.js'></script>");
-              client.println("<style>body {font-family: Arial; text-align: center;}</style></head><body>");
-              client.println("<h1>Heat Transfer - Monitor y Control de Rele</h1>");
-              client.println("<script>");
-              client.println("function updateSensorData() {");
-              client.println("  var xhttp = new XMLHttpRequest();");
-              client.println("  xhttp.onreadystatechange = function() {");
-              client.println("    if (this.readyState == 4 && this.status == 200) {");
-              client.println("      var data = JSON.parse(this.responseText);");
-              client.println("      document.getElementById('ahtTemp1').innerHTML = data.ahtTemp1 + '°C';");
-              client.println("      document.getElementById('ahtHum1').innerHTML = data.ahtHum1 + '%';");
-              client.println("      document.getElementById('ahtTemp2').innerHTML = data.ahtTemp2 + '°C';");
-              client.println("      document.getElementById('ahtHum2').innerHTML = data.ahtHum2 + '%';");
-              client.println("      document.getElementById('dhtTemp1').innerHTML = data.dhtTemp1 + '°C';");
-              client.println("      document.getElementById('dhtHum1').innerHTML = data.dhtHum1 + '%';");
-              client.println("      document.getElementById('dhtTemp2').innerHTML = data.dhtTemp2 + '°C';");
-              client.println("      document.getElementById('dhtHum2').innerHTML = data.dhtHum2 + '%';");
-              client.println("      document.getElementById('mlxTempObj').innerHTML = data.mlxTempObj + '°C';");
-              client.println("      document.getElementById('mlxTempAmb').innerHTML = data.mlxTempAmb + '°C';");
-              client.println("      document.getElementById('relayButton').innerHTML = data.relayState ? 'Apagar Rele' : 'Encender Rele';");
-              client.println("      document.getElementById('relayMessage').innerHTML = data.relayMessage;");
-              client.println("    }");
-              client.println("  };");
-              client.println("  xhttp.open('GET', '/sensordata', true);");
-              client.println("  xhttp.send();");
-              client.println("}");
-              client.println("function toggleRelay() {");
-              client.println("  var xhttp = new XMLHttpRequest();");
-              client.println("  xhttp.open('GET', '/toggleRelay', true);");
-              client.println("  xhttp.send();");
-              client.println("}");
-              client.println("setInterval(updateSensorData, 1000);");
-              client.println("</script>");
-
-              client.println("<button onclick='showExperiment()'>Monitor</button>");
-              client.println("<button onclick='showCSVGraph()'>Graficar CSV</button>");
-
-              client.println("<div id='experimentInterface' style='display: block;'>");
-
-              client.println("<h2>Configuracion de Limites</h2>");
-              client.println("<p id='tempLimitDisplay'>Temperatura de calentamiento (MLX90614): " + (tempLimitConfigured ? formatFloat(tempLimit, 2) + "°C" : "No configurado") + "</p>");
-              client.println("<form id='setLimitForm' onsubmit='submitLimitForm(event, \"/setlimit/\", \"tempLimitDisplay\", \"tempLimitMessage\")'>");
-              client.println("<input type='number' id='setLimitInput' name='temp' min='0' max='90' step='0.01' placeholder='0.00 - 90.00 °C' required>");
-              client.println("<input type='submit' value='Actualizar Limite'>");
-              client.println("</form>");
-              client.println("<p id='tempLimitMessage' style='color: red;'></p>");
-
-              client.println("<p id='criticalTempLimitDisplay'>Temperatura a la que se quiere llegar (AHT10): " + (criticalTempLimitConfigured ? formatFloat(criticalTempLimit, 2) + "°C" : "No configurado") + "</p>");
-              client.println("<form id='setCriticalLimitForm' onsubmit='submitLimitForm(event, \"/setcriticallimit/\", \"criticalTempLimitDisplay\", \"criticalTempLimitMessage\")'>");
-              client.println("<input type='number' id='setCriticalLimitInput' name='temp' min='0' max='45' step='0.01' placeholder='0.00 - 45.00 °C' required>");
-              client.println("<input type='submit' value='Actualizar Limite'>");
-              client.println("</form>");
-              client.println("<p id='criticalTempLimitMessage' style='color: red;'></p>");
-
-              client.println("<script>");
-              client.println("function submitLimitForm(event, endpoint, displayId, messageId) {");
-              client.println("  event.preventDefault();");
-              client.println("  var input = event.target.querySelector('input[name=\"temp\"]');");
-              client.println("  var value = parseFloat(input.value);");
-              client.println("  var min = parseFloat(input.min);");
-              client.println("  var max = parseFloat(input.max);");
-              client.println("  var messageElement = document.getElementById(messageId);");
-              client.println("  if (value < min || value > max) {");
-              client.println("    messageElement.style.color = 'red';");
-              client.println("    messageElement.innerText = 'El valor debe estar entre ' + min + '°C y ' + max + '°C.';");
-              client.println("    return;");
-              client.println("  }");
-              client.println("  var xhttp = new XMLHttpRequest();");
-              client.println("  xhttp.onreadystatechange = function() {");
-              client.println("    if (this.readyState == 4 && this.status == 200) {");
-              client.println("      document.getElementById(displayId).innerText = 'Temperatura actualizada: ' + value.toFixed(2) + '°C';");
-              client.println("    }");
-              client.println("  };");
-              client.println("  xhttp.open('GET', endpoint + '?temp=' + value.toFixed(2), true);");
-              client.println("  xhttp.send();");
-              client.println("}");
-              client.println("</script>");
-
-              client.println("<h2>Control del Rele</h2>");
-              client.println("<p id='relayMessage'>Cargando estado...</p>");
-              client.println("<button id='relayButton' onclick='toggleRelay()'>Encender Rele</button>");
-
-              client.println("<h2>Lecturas de Sensores</h2>");
-              client.println("<p>MLX90614 - Temp Objeto: <span id='mlxTempObj'>--°C</span>, Temp Ambiente: <span id='mlxTempAmb'>--°C</span></p>");
-              client.println("<p>AHT10 Interno - Temp: <span id='ahtTemp1'>--°C</span>, Humedad: <span id='ahtHum1'>--%</span></p>");
-              client.println("<p>DHT11 Interno - Temp: <span id='dhtTemp2'>--°C</span>, Humedad: <span id='dhtHum2'>--%</span></p>");
-              client.println("<p>AHT10 Externo - Temp: <span id='ahtTemp2'>--°C</span>, Humedad: <span id='ahtHum2'>--%</span></p>");
-              client.println("<p>DHT11 Externo - Temp: <span id='dhtTemp1'>--°C</span>, Humedad: <span id='dhtHum1'>--%</span></p>");
-
-              client.println("<button onclick='exportCSV()'>Exportar a CSV</button>");
-
-              client.println("<div id='plotlyChartContainer' style='display: flex; justify-content: center; align-items: center; width: 100%;'>");
-              client.println("  <div id='plotlyChart' style='width: 100%; max-width: 900px; height: 600px;'></div>");
-              client.println("</div>");
-              client.println("</div>");
-
-              client.println("<script>");
-              client.println("let csvData = [['Tiempo', 'AHT10 Interno', 'AHT10 Externo', 'DHT11 Interno', 'DHT11 Externo', 'MLX90614 Objeto', 'MLX90614 Ambiente']];");
-
-              client.println("let lastTime = '';");
-              client.println("function updatePlotlyChart() {");
-              client.println("  var xhttp = new XMLHttpRequest();");
-              client.println("  xhttp.onreadystatechange = function() {");
-              client.println("    if (this.readyState == 4 && this.status == 200) {");
-              client.println("      var data = JSON.parse(this.responseText);");
-              client.println("      if (data.tiempo !== lastTime) {");
-              client.println("        csvData.push([data.tiempo, data.ahtTemp1, data.ahtTemp2, data.dhtTemp2, data.dhtTemp1, data.mlxTempObj, data.mlxTempAmb]);");
-              client.println("        lastTime = data.tiempo;");
-              client.println("        var update = {");
-              client.println("          x: [[data.tiempo], [data.tiempo], [data.tiempo], [data.tiempo], [data.tiempo], [data.tiempo]],");
-              client.println("          y: [[data.ahtTemp1], [data.ahtTemp2], [data.dhtTemp2], [data.dhtTemp1], [data.mlxTempObj], [data.mlxTempAmb]]");
-              client.println("        };");
-              client.println("        Plotly.extendTraces('plotlyChart', update, [0, 1, 2, 3, 4, 5]);");
-              client.println("      }");
-              client.println("    }");
-              client.println("  };");
-              client.println("  xhttp.open('GET', '/sensordata', true);");
-              client.println("  xhttp.send();");
-              client.println("}");
-              client.println("setInterval(updatePlotlyChart, 1000);");
-
-              client.println("function exportCSV() {");
-              client.println("  let csvContent = 'data:text/csv;charset=utf-8,' + csvData.map(e => e.join(',')).join('\\n');");
-              client.println("  var link = document.createElement('a');");
-              client.println("  link.setAttribute('href', encodeURI(csvContent));");
-              client.println("  link.setAttribute('download', 'Heat_Transfer.csv');");
-              client.println("  document.body.appendChild(link);");
-              client.println("  link.click();");
-              client.println("  document.body.removeChild(link);");
-              client.println("}");
-              client.println("</script>");
-
-              client.println("<script>");
-              client.println("Plotly.newPlot('plotlyChart', [{");
-              client.println("  x: [], y: [], mode: 'lines', name: 'AHT10 Interno', line: {color: 'red'}");
-              client.println("}, {");
-              client.println("  x: [], y: [], mode: 'lines', name: 'AHT10 Externo', line: {color: 'blue'}");
-              client.println("}, {");
-              client.println("  x: [], y: [], mode: 'lines', name: 'DHT11 Interno', line: {color: 'purple'}");
-              client.println("}, {");
-              client.println("  x: [], y: [], mode: 'lines', name: 'DHT11 Externo', line: {color: 'orange'}");
-              client.println("}, {");
-              client.println("  x: [], y: [], mode: 'lines', name: 'MLX90614 Objeto', line: {color: 'green'}");
-              client.println("}, {");
-              client.println("  x: [], y: [], mode: 'lines', name: 'MLX90614 Ambiente', line: {color: 'brown'}");
-              client.println("}], {");
-              client.println("  title: 'Grafica de Temperaturas de Sensores',");
-              client.println("  xaxis: { title: 'Tiempo' },");
-              client.println("  yaxis: { title: 'Temperatura (°C)' }");
-              client.println("}, {locale: 'es', displaylogo: false, responsive: true, displayModeBar: true});");
-              client.println("</script>");
-
-              client.println("<div id='csvInterface' style='display: none;'>");
-              client.println("<h2>Importar CSV y Graficar</h2>");
-              client.println("<input type='file' id='importCSVInput' accept='.csv' onchange='importCSV(event)'>");
-              client.println("<div id='csvPlotlyChart' style='width: 90%; height: 500px; margin: auto;'></div>");
-              
-              client.println("<script>");
-              client.println("function importCSV(event) {");
-              client.println("  var file = event.target.files[0];");
-              client.println("  if (file) {");
-              client.println("    var reader = new FileReader();");
-              client.println("    reader.onload = function(e) {");
-              client.println("      var rows = e.target.result.split('\\n').slice(1);");
-              client.println("      var x = [], yAHT1 = [], yAHT2 = [], yDHT2 = [], yDHT1 = [], yObj = [], yAmb = [];");
-              client.println("      rows.forEach(row => {");
-              client.println("        var cols = row.split(',');");
-              client.println("        if (cols.length >= 7) {");
-              client.println("          x.push(cols[0]);");
-              client.println("          yAHT1.push(parseFloat(cols[1]));");
-              client.println("          yAHT2.push(parseFloat(cols[2]));");
-              client.println("          yDHT2.push(parseFloat(cols[3]));");
-              client.println("          yDHT1.push(parseFloat(cols[4]));");
-              client.println("          yObj.push(parseFloat(cols[5]));");
-              client.println("          yAmb.push(parseFloat(cols[6]));");
-              client.println("        }");
-              client.println("      });");
-              client.println("      Plotly.newPlot('csvPlotlyChart', [");
-              client.println("        { x: x, y: yAHT1, mode: 'lines', name: 'AHT10 Interno', line: {color: 'red'} },");
-              client.println("        { x: x, y: yAHT2, mode: 'lines', name: 'AHT10 Externo', line: {color: 'blue'} },");
-              client.println("        { x: x, y: yDHT2, mode: 'lines', name: 'DHT11 Interno', line: {color: 'purple'} },");
-              client.println("        { x: x, y: yDHT1, mode: 'lines', name: 'DHT11 Externo', line: {color: 'orange'} },");
-              client.println("        { x: x, y: yObj, mode: 'lines', name: 'MLX90614 Objeto', line: {color: 'green'} },");
-              client.println("        { x: x, y: yAmb, mode: 'lines', name: 'MLX90614 Ambiente', line: {color: 'brown'} }");
-              client.println("      ], { title: 'Grafica desde CSV', xaxis: { title: 'Tiempo' }, yaxis: { title: 'Temperatura (°C)' } }, {locale: 'es', displaylogo: false, responsive: true, displayModeBar: true});");
-              client.println("    };");
-              client.println("    reader.readAsText(file);");
-              client.println("  }");
-              client.println("}");
-              
-              client.println("function showExperiment() {");
-              client.println("  document.getElementById('experimentInterface').style.display = 'block';");
-              client.println("  document.getElementById('csvInterface').style.display = 'none';");
-              client.println("}");
-              
-              client.println("function showCSVGraph() {");
-              client.println("  document.getElementById('experimentInterface').style.display = 'none';");
-              client.println("  document.getElementById('csvInterface').style.display = 'block';");
-              client.println("}");
-              client.println("</script>");
-              
-              client.println("</div>");
-              client.println("</body></html>");
-
+              client.print(FPSTR(index_html));
               break;
             } else {
               currentLine = "";
@@ -544,5 +336,4 @@ void setup() {
 
 void loop() {
   // Las tareas corren en nucleos separados
-
 }
