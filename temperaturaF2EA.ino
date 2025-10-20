@@ -7,14 +7,14 @@
 extern "C" {
   #include "esp_log.h"
 }
-
+#define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
 #include "web_page_core.h"
 #if ENABLE_CHART
   #include "web_chart.h"
 #endif
 #include "web_send.h"
 
-#define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
+
 
 // =====  Seccion sensores =====
 // ===== Pines y configuraciones (solo si no están definidos) =====
@@ -118,7 +118,7 @@ bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="int
     bool error=false;
     float dhtTempAux = dht.readTemperature();
     float dhtHumAux = dht.readHumidity();
-    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { debug.dhtf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
+    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { debug.errorf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
     else {
             dhtTemp = dhtTempAux;
             dhtHum = dhtHumAux;
@@ -132,7 +132,7 @@ bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity,
     sensors_event_t humidityEvent, tempEvent;
     aht10.getEvent(&humidityEvent, &tempEvent);
     if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
-        debug.ahtf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
+        debug.errorf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
         temp = -100;
         humidity = -100;
     } else {
@@ -140,7 +140,7 @@ bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity,
             temp = tempEvent.temperature;
             humidity = humidityEvent.relative_humidity;
     }
-    } else { debug.ahtf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
+    } else { debug.errorf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
         temp = 0;
         humidity = 0;
     }
@@ -155,10 +155,10 @@ bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &ml
     if (mlx_ok) {
     mlxTempObj = mlx.readObjectTempC();
     mlxTempAmb = mlx.readAmbientTempC();
-    if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { debug.mlxf("❌ MLX90614 lectura inválida"); error = true; }
+    if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { debug.errorf("❌ MLX90614 lectura inválida"); error = true; }
     else debug.mlxf("MLX90614 → Tamb: %.2f °C | Tobj: %.2f °C", mlxTempAmb, mlxTempObj);
     } else {
-    debug.mlxf("⚠️ MLX90614 no inicializado");
+    debug.errorf("⚠️ MLX90614 no inicializado");
     error = true;
     }
     return error; 

@@ -11,7 +11,9 @@
 #define DEBUG_DHT       0
 #define DEBUG_AHT       0
 #define DEBUG_MLX       0
-
+#define DEBUG_DHT_ERROR      1
+#define DEBUG_AHT_ERROR      1
+#define DEBUG_MLX_ERROR      1
 
 // ===== EMOJIS =====
 #define EMOJI_DHT  "🌡️"
@@ -72,6 +74,7 @@ class Debug {
       printLine(EMOJI_AHT, "AHT", msg);
     #endif
     }
+
     void ahtf(const char* fmt, ...) {
     #if DEBUG_ENABLED && DEBUG_AHT
       char buf[DEBUG_BUF_SZ];
