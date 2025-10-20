@@ -3,8 +3,10 @@
 #include <DHT.h>
 #include <Adafruit_AHTX0.h>
 #include <WiFi.h>
-
-#define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
+#include "Debug.h"
+extern "C" {
+  #include "esp_log.h"
+}
 
 #include "web_page_core.h"
 #if ENABLE_CHART
@@ -12,28 +14,10 @@
 #endif
 #include "web_send.h"
 
-// ===== CONFIGURACIÓN GLOBAL DE TIEMPOS =====
+#define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
 
-// Frecuencia de escaneo de sensores (en milisegundos)
-#define SENSOR_INTERVAL_MS   1000   // cada 1 s
-
-// Frecuencia de actualización de la gráfica y del fetch /sensordata (en ms)
-#define WEB_UPDATE_MS        1000   // cada 1 s
-
-// Timeout de cliente web (inactividad)
-#define WEB_CLIENT_TIMEOUT_MS 2000  // 2 s sin tráfico = cortar conexión
-
-
-//para chequear si el reinicio es por el wdt
-// #include "esp_system.h"
-
-// Configuracion Wi-Fi
-const char* ssid = "electricidad";
-const char* password = "medianoche extinto carreras asado hoja integral";
-WiFiServer server(80);
-String header;
-
-// Pines y configuraciones de sensores
+// =====  Seccion sensores =====
+// ===== Pines y configuraciones (solo si no están definidos) =====
 #define SDA_1 21
 #define SCL_1 22
 #define SDA_2 18
@@ -44,6 +28,33 @@ String header;
 #define RELAY_PIN 15
 #define LED 4
 
+// Instancias de sensores
+DHT dht1(DHTPIN1, DHTTYPE);
+DHT dht2(DHTPIN2, DHTTYPE);
+Adafruit_AHTX0 aht10_1;
+Adafruit_AHTX0 aht10_2;
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+bool mlx_ok;
+bool aht1_ok;
+bool aht2_ok;
+TwoWire I2C_2 = TwoWire(1);
+float mlxTempObj, mlxTempAmb;
+
+// ===== CONFIGURACIÓN GLOBAL DE TIEMPOS =====
+// Frecuencia de escaneo de sensores (en milisegundos)
+#define SENSOR_INTERVAL_MS   1000   // cada 1 s
+// Frecuencia de actualización de la gráfica y del fetch /sensordata (en ms)
+#define WEB_UPDATE_MS        1000   // cada 1 s
+// Timeout de cliente web (inactividad)
+#define WEB_CLIENT_TIMEOUT_MS 2000  // 2 s sin tráfico = cortar conexión
+
+// Configuracion Wi-Fi
+const char* ssid = "electricidad";
+const char* password = "medianoche extinto carreras asado hoja integral";
+WiFiServer server(80);
+String header;
+
+Debug debug;
 
 // Limites de temperatura
 float tempLimit = 0.0;
@@ -51,38 +62,15 @@ float criticalTempLimit = 0.0;
 bool tempLimitConfigured = false;
 bool criticalTempLimitConfigured = false;
 
-// Instancias de sensores
-DHT dht1(DHTPIN1, DHTTYPE);
-DHT dht2(DHTPIN2, DHTTYPE);
-
-Adafruit_AHTX0 aht10_1;
-Adafruit_AHTX0 aht10_2;
-Adafruit_MLX90614 mlx = Adafruit_MLX90614();
-TwoWire I2C_2 = TwoWire(1);
-
 // Variables de almacenamiento de datos
 float ahtTemp1=0, ahtHum1=0, ahtTemp2=0, ahtHum2=0;
 float dhtTemp1, dhtHum1, dhtTemp2, dhtHum2;
-float dhtTemp1Aux, dhtHum1Aux, dhtTemp2Aux, dhtHum2Aux;
 
-float mlxTempObj, mlxTempAmb;
+//Relay
 bool relayState = false;
 bool relayLocked = false;
 int tiempo = 0;
 String tiempoFormato = "00:00:00";
-
-// Flags de inicialización
-bool mlx_ok  = false;
-bool aht1_ok = false;
-bool aht2_ok = false;
-
-
-//para chequear si el reinicio es por el wdt
-// void printResetReason() {
-//   esp_reset_reason_t r = esp_reset_reason();
-//   Serial.print("Reset reason: ");
-//   Serial.println(r); // ESP_RST_TASK_WDT=3, ESP_RST_WDT=4, etc.
-// }
 
 // Funcion para convertir float a String con formato controlado
 String formatFloat(float value, int precision = 2) {
@@ -101,68 +89,19 @@ String convertirASegundos(int segundosTotales) {
 
     return String(tiempoFormato); // Convertir a string y devolver
 }
-bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="interno") {
-    bool error;
-    float dhtTempAux = dht.readTemperature();
-    float dhtHumAux = dht.readHumidity();
-    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { Serial.printf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
-    else {
-            dhtTemp = dhtTempAux;
-            dhtHum = dhtHumAux;
-            Serial.printf("DHT #(%s) → T: %.2f °C | H: %.2f %%\n",ubicacion, dhtTemp, dhtHum);
-    }
-    return error; 
-}
-bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion="interno") {
-    bool error;
-    if (aht_ok) {
-      sensors_event_t humidityEvent, tempEvent;
-      aht10.getEvent(&humidityEvent, &tempEvent);
-      if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
-        Serial.printf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
-        temp = -100;
-        humidity = -100;
-      } else {
-        Serial.printf("AHT #(%s) → T: %.2f °C | H: %.2f %% \n",ubicacion, tempEvent.temperature, humidityEvent.relative_humidity);
-            temp = tempEvent.temperature;
-            humidity = humidityEvent.relative_humidity;
-      }
-    } else { Serial.printf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
-        temp = 0;
-        humidity = 0;
-    }
-    return error; 
-}
-bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
-    bool error;
-    // Lee omfrarojo
-    mlxTempObj = 0;
-    mlxTempAmb = 0;
-    // ----- MLX90614 -----
-    if (mlx_ok) {
-      mlxTempObj = mlx.readObjectTempC();
-      mlxTempAmb = mlx.readAmbientTempC();
-      if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { Serial.println("❌ MLX90614 lectura inválida"); error = true; }
-      else Serial.printf("MLX90614 → Tamb: %.2f °C | Tobj: %.2f °C\n", mlxTempAmb, mlxTempObj);
-    } else {
-      Serial.println("⚠️ MLX90614 no inicializado");
-      error = true;
-    }
-    return error; 
-}
 void releUpdate(){
     if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
       if (mlxTempObj >= tempLimit) {
         //relayState = false;
         digitalWrite(RELAY_PIN, LOW);
         digitalWrite(LED, LOW);
-        //Serial.println("Rele Apagado");
+        //debug.infof("Rele Apagado");
       } else if (mlxTempObj <= tempLimit - 5.00) {
         //relayState = true;
         digitalWrite(RELAY_PIN, HIGH);
         digitalWrite(LED, HIGH);
-        //Serial.println("Rele Prendido");
-        //Serial.println(tempLimit);
+        //debug.infof("Rele Prendido");
+        //debug.infof(tempLimit);
       }
     }
 }
@@ -172,18 +111,67 @@ void releUpdateDesbloqueo(){
     relayState = false;
     digitalWrite(RELAY_PIN, LOW);
     digitalWrite(LED, LOW);
-    //Serial.println("Limite critico alcanzado. Rele apagado definitivamente.");
+    //debug.infof("Limite critico alcanzado. Rele apagado definitivamente.");
   }
+}
+bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="interno") {
+    bool error=false;
+    float dhtTempAux = dht.readTemperature();
+    float dhtHumAux = dht.readHumidity();
+    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { debug.dhtf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
+    else {
+            dhtTemp = dhtTempAux;
+            dhtHum = dhtHumAux;
+            debug.dhtf("#(%s) → T: %.2f °C | H: %.2f %%",ubicacion, dhtTemp, dhtHum);
+    }
+    return error; 
+}
+bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion="interno") {
+    bool error=false;
+    if (aht_ok) {
+    sensors_event_t humidityEvent, tempEvent;
+    aht10.getEvent(&humidityEvent, &tempEvent);
+    if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
+        debug.ahtf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
+        temp = -100;
+        humidity = -100;
+    } else {
+        debug.ahtf("AHT #(%s) → T: %.2f °C | H: %.2f %% ",ubicacion, tempEvent.temperature, humidityEvent.relative_humidity);
+            temp = tempEvent.temperature;
+            humidity = humidityEvent.relative_humidity;
+    }
+    } else { debug.ahtf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
+        temp = 0;
+        humidity = 0;
+    }
+    return error; 
+}
+bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
+    bool error=false;
+    // Lee omfrarojo
+    mlxTempObj = 0;
+    mlxTempAmb = 0;
+    // ----- MLX90614 -----
+    if (mlx_ok) {
+    mlxTempObj = mlx.readObjectTempC();
+    mlxTempAmb = mlx.readAmbientTempC();
+    if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { debug.mlxf("❌ MLX90614 lectura inválida"); error = true; }
+    else debug.mlxf("MLX90614 → Tamb: %.2f °C | Tobj: %.2f °C", mlxTempAmb, mlxTempObj);
+    } else {
+    debug.mlxf("⚠️ MLX90614 no inicializado");
+    error = true;
+    }
+    return error; 
 }
 // Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
 void leerSensores() {
   bool error = false;
   leerDHT(dht1, dhtTemp1, dhtHum1);
   leerDHT(dht2, dhtTemp2, dhtHum2, "externo");
-  leerAHT(aht10_1, aht1_ok,ahtTemp1, ahtHum1);
-  leerAHT(aht10_2, aht2_ok,ahtTemp2, ahtHum2, "externo");
+  leerAHT(aht10_1,aht1_ok,ahtTemp1, ahtHum1);
+  leerAHT(aht10_2,aht2_ok,ahtTemp2, ahtHum2, "externo");
   leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
-  Serial.println("-----------------------------");
+  debug.infoSensor("-----------------------------");
 }
 void sensorTask(void *pvParameters) {
   for(;;) {
@@ -325,56 +313,59 @@ void webServerTask(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
-
-void setup() {
-  Serial.begin(115200);
+void wifi_setup(){
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nConexion establecida.");
-  Serial.println("IP address: ");
+  Serial.println("");
+  Serial.printf("Conexion establecida. \n");
+  Serial.printf("IP address: ");
   Serial.println(WiFi.localIP());
   server.begin();
+}
+void sensor_setup(){
+  esp_log_level_set("i2c",        ESP_LOG_NONE);   // o ESP_LOG_ERROR si querés ver solo errores graves
+  esp_log_level_set("i2c.master", ESP_LOG_NONE);
 
   Wire.begin(SDA_1, SCL_1);
   I2C_2.begin(SDA_2, SCL_2);
-
-
-
-
   aht1_ok = aht10_1.begin(&Wire);
   aht2_ok = aht10_2.begin(&I2C_2);
   mlx_ok  = mlx.begin();
+  delay(1000);
   dht1.begin();
   dht2.begin();
 
   // para debug
-  Serial.println(mlx_ok  ? "✅ MLX90614 listo (Wire)"        : "❌ MLX90614 no inicializó");
-  Serial.println(aht1_ok ? "✅ AHT #1 listo (Wire)"          : "❌ AHT #1 falló");
-  Serial.println(aht2_ok ? "✅ AHT #2 listo (Wire1)"         : "❌ AHT #2 falló");
-  Serial.println("✅ DHT11 #1 y #2 inicializados");
-  Serial.println("=============================\n");
-
-
+  debug.mlxf(mlx_ok  ? "✅ MLX90614 listo (Wire)"        : "❌ MLX90614 no inicializó");
+  debug.ahtf(aht1_ok ? "✅ AHT #1 listo (Wire)"          : "❌ AHT #1 falló");
+  debug.ahtf(aht2_ok ? "✅ AHT #2 listo (Wire1)"         : "❌ AHT #2 falló");
+  debug.dht("✅ DHT11 #1 y #2 inicializados");
+  debug.infoSensor("=============================\n");
+}
+void configurar_LED(){
   pinMode(LED, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(LED, LOW);
   digitalWrite(RELAY_PIN, LOW);
   delay(1000);
-  //xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 0);
-  //xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
-
-  //intento de arreglar el dht
+}
+void setup() {
+  Serial.begin(115200);
+  wifi_setup();
+  sensor_setup();
+  configurar_LED();
   xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
-
-  //para chequear si el reinicio es por el wdt
-  // delay(2000);
-  // printResetReason();
 }
 
 void loop() {
   // Las tareas corren en nucleos separados
 }
+
+
+
+
+
