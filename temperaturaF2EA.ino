@@ -44,7 +44,7 @@ String header;
 //  TIEMPOS / PERIODOS
 // ===============================================================
 // Escaneo de sensores
-#define SENSOR_INTERVAL_MS     1000   // cada 1 s
+#define SENSOR_INTERVAL_MS     10000   // cada 1 s
 #define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
 #define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
 // Actualización web (gráfica / fetch)
@@ -53,6 +53,13 @@ String header;
 #define WEB_CLIENT_TIMEOUT_MS  2000   // 2 s sin tráfico ⇒ cortar conexión
 
 int periodo=SENSOR_INTERVAL_MS_LOW;
+
+unsigned long tiempoInicial = 0;  // Guarda el momento de inicio
+unsigned long tiempoActual = 0;
+
+
+
+
 // ===============================================================
 //  INSTANCIAS DE SENSORES
 // ===============================================================
@@ -107,15 +114,17 @@ String formatFloat(float value, int precision = 2) {
   return String(buffer);
 }
 //Funcion para convertir segundos a formato hh:mm:ss
-String convertirASegundos(int segundosTotales) {
+String formatoTiempo(unsigned long milisegundosTotales) {
+    unsigned long segundosTotales = milisegundosTotales / 1000;
     int horas = segundosTotales / 3600;
     int minutos = (segundosTotales % 3600) / 60;
     int segundos = segundosTotales % 60;
+    int ms = milisegundosTotales % 1000;
 
-    char tiempoFormato[9];
-    sprintf(tiempoFormato, "%02d:%02d:%02d", horas, minutos, segundos);
+    char tiempoFormato[13];
+    sprintf(tiempoFormato, "%02d:%02d:%02d.%03d", horas, minutos, segundos, ms);
 
-    return String(tiempoFormato); // Convertir a string y devolver
+    return String(tiempoFormato);
 }
 void releUpdate(){
     if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
@@ -204,8 +213,8 @@ void sensorTask(void *pvParameters) {
     leerSensores();
     releUpdate();
     releUpdateDesbloqueo();
-    tiempoFormato = convertirASegundos(tiempo);
-    tiempo += 1; 
+    //tiempoFormato = formatoTiempo(tiempo);
+    //tiempo += 1; 
     vTaskDelay(pdMS_TO_TICKS(SENSOR_INTERVAL_MS));
   }
 }
@@ -380,6 +389,7 @@ void configurar_LED(){
 }
 void setup() {
   Serial.begin(115200);
+  tiempoInicial = millis();  // Guarda el tiempo inicial (al arrancar)
   wifi_setup();
   sensor_setup();
   configurar_LED();
@@ -389,6 +399,9 @@ void setup() {
 
 void loop() {
   // Las tareas corren en nucleos separados
+  tiempoActual = millis() - tiempoInicial;
+  tiempo=tiempoActual;
+  tiempoFormato = formatoTiempo(tiempo);
 }
 
 

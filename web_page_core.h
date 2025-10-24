@@ -37,6 +37,7 @@ const char index_head[] PROGMEM = R"HTML(
   <p id='relayMessage'>Cargando estado...</p>
   <button id='relayButton' onclick='toggleRelay()'>Encender Rele</button>
 
+  <p>Tiempo: <span id='time'>--</span> </p>
   <h2>Lecturas de Sensores</h2>
   <p>MLX90614 - Objeto: <span id='mlxTempObj'>--°C</span> | Ambiente: <span id='mlxTempAmb'>--°C</span></p>
   <p>AHT10 Interno: <span id='ahtTemp1'>--°C</span> / <span id='ahtHum1'>--%</span></p>
@@ -106,6 +107,7 @@ const char index_tail[] PROGMEM = R"HTML(
         setText('mlxTempObj', d.mlxTempObj + '°C'); setText('mlxTempAmb', d.mlxTempAmb + '°C');
         setText('relayMessage', d.relayMessage);
         setText('relayButton', d.relayState ? 'Apagar Rele' : 'Encender Rele');
+        setText('time', d.tiempo);
         csvPush(d);
         // Si la gráfica está habilitada, el script de la gráfica se “cuelga” de esta función:
         if (window.chartUpdate) window.chartUpdate(d);
