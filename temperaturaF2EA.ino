@@ -1,12 +1,13 @@
+// --------------------- INCLUDES ---------------------
 #include <Wire.h>
-#include <Adafruit_MLX90614.h>
-#include <DHT.h>
-#include <Adafruit_AHTX0.h>
 #include <WiFi.h>
+#include <Adafruit_MLX90614.h>
+#include <Adafruit_AHTX0.h>
+#include <DHT.h>
+
 #include "Debug.h"
-extern "C" {
-  #include "esp_log.h"
-}
+
+
 #define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
 #include "web_page_core.h"
 #if ENABLE_CHART
@@ -14,63 +15,90 @@ extern "C" {
 #endif
 #include "web_send.h"
 
+// ===============================================================
+//  CONFIGURACIÓN DE HARDWARE
+// ===============================================================
 
+// --- Pines I2C ---
+#define SDA_1   21
+#define SCL_1   22
+#define SDA_2   18
+#define SCL_2   19
 
-// =====  Seccion sensores =====
-// ===== Pines y configuraciones (solo si no están definidos) =====
-#define SDA_1 21
-#define SCL_1 22
-#define SDA_2 18
-#define SCL_2 19
+// --- Pines sensores / actuadores ---
 #define DHTPIN1 13
 #define DHTPIN2 14
 #define DHTTYPE DHT11
 #define RELAY_PIN 15
-#define LED 4
+#define LED       4
 
-// Instancias de sensores
+// ===============================================================
+//  RED / SERVIDOR WEB
+// ===============================================================
+const char* ssid     = "electricidad";
+const char* password = "medianoche extinto carreras asado hoja integral";
+WiFiServer server(80);
+String header;
+
+// ===============================================================
+//  TIEMPOS / PERIODOS
+// ===============================================================
+// Escaneo de sensores
+#define SENSOR_INTERVAL_MS     1000   // cada 1 s
+#define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
+#define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
+// Actualización web (gráfica / fetch)
+#define WEB_UPDATE_MS          1000   // cada 1 s
+// Timeout de cliente web
+#define WEB_CLIENT_TIMEOUT_MS  2000   // 2 s sin tráfico ⇒ cortar conexión
+
+int periodo=SENSOR_INTERVAL_MS_LOW;
+// ===============================================================
+//  INSTANCIAS DE SENSORES
+// ===============================================================
 DHT dht1(DHTPIN1, DHTTYPE);
 DHT dht2(DHTPIN2, DHTTYPE);
 Adafruit_AHTX0 aht10_1;
 Adafruit_AHTX0 aht10_2;
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+TwoWire I2C_2 = TwoWire(1);
+
+// Estado de inicialización
 bool mlx_ok;
 bool aht1_ok;
 bool aht2_ok;
-TwoWire I2C_2 = TwoWire(1);
+
+// ===============================================================
+//  VARIABLES DE MEDICIÓN / ESTADO
+// ===============================================================
+// MLX
 float mlxTempObj, mlxTempAmb;
 
-// ===== CONFIGURACIÓN GLOBAL DE TIEMPOS =====
-// Frecuencia de escaneo de sensores (en milisegundos)
-#define SENSOR_INTERVAL_MS   1000   // cada 1 s
-// Frecuencia de actualización de la gráfica y del fetch /sensordata (en ms)
-#define WEB_UPDATE_MS        1000   // cada 1 s
-// Timeout de cliente web (inactividad)
-#define WEB_CLIENT_TIMEOUT_MS 2000  // 2 s sin tráfico = cortar conexión
+// AHT y DHT
+float ahtTemp1 = 0, ahtHum1 = 0;
+float ahtTemp2 = 0, ahtHum2 = 0;
+float dhtTemp1, dhtHum1;
+float dhtTemp2, dhtHum2;
 
-// Configuracion Wi-Fi
-const char* ssid = "electricidad";
-const char* password = "medianoche extinto carreras asado hoja integral";
-WiFiServer server(80);
-String header;
-
-Debug debug;
-
-// Limites de temperatura
+// Límites de temperatura
 float tempLimit = 0.0;
 float criticalTempLimit = 0.0;
 bool tempLimitConfigured = false;
 bool criticalTempLimitConfigured = false;
 
-// Variables de almacenamiento de datos
-float ahtTemp1=0, ahtHum1=0, ahtTemp2=0, ahtHum2=0;
-float dhtTemp1, dhtHum1, dhtTemp2, dhtHum2;
-
-//Relay
-bool relayState = false;
+// Relé
+bool relayState  = false;
 bool relayLocked = false;
-int tiempo = 0;
-String tiempoFormato = "00:00:00";
+
+// Tiempo “hh:mm:ss” (relativo)
+int    tiempo         = 0;
+String tiempoFormato  = "00:00:00";
+
+// ===============================================================
+//  DEBUG
+// ===============================================================
+Debug debug;
+
 
 // Funcion para convertir float a String con formato controlado
 String formatFloat(float value, int precision = 2) {
@@ -93,12 +121,12 @@ void releUpdate(){
     if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
       if (mlxTempObj >= tempLimit) {
         //relayState = false;
-        digitalWrite(RELAY_PIN, LOW);
+        digitalWrite(RELAY_PIN, HIGH);
         digitalWrite(LED, LOW);
         //debug.infof("Rele Apagado");
       } else if (mlxTempObj <= tempLimit - 5.00) {
         //relayState = true;
-        digitalWrite(RELAY_PIN, HIGH);
+        digitalWrite(RELAY_PIN, LOW);
         digitalWrite(LED, HIGH);
         //debug.infof("Rele Prendido");
         //debug.infof(tempLimit);
@@ -109,7 +137,7 @@ void releUpdateDesbloqueo(){
   if (ahtTemp1 >= criticalTempLimit && criticalTempLimitConfigured) {
     relayLocked = true;
     relayState = false;
-    digitalWrite(RELAY_PIN, LOW);
+    digitalWrite(RELAY_PIN, HIGH);
     digitalWrite(LED, LOW);
     //debug.infof("Limite critico alcanzado. Rele apagado definitivamente.");
   }
@@ -149,8 +177,6 @@ bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity,
 bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
     bool error=false;
     // Lee omfrarojo
-    mlxTempObj = 0;
-    mlxTempAmb = 0;
     // ----- MLX90614 -----
     if (mlx_ok) {
     mlxTempObj = mlx.readObjectTempC();
@@ -234,7 +260,7 @@ void webServerTask(void *pvParameters) {
               if (header.indexOf("GET /toggleRelay") >= 0) {
                 if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured) {
                   relayState = !relayState;
-                  digitalWrite(RELAY_PIN, relayState ? HIGH : LOW);
+                  digitalWrite(RELAY_PIN, relayState ? LOW : HIGH);
                   digitalWrite(LED, relayState ? HIGH : LOW);
                 }
                 client.println("HTTP/1.1 200 OK");
@@ -349,7 +375,7 @@ void configurar_LED(){
   pinMode(LED, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(LED, LOW);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(RELAY_PIN, HIGH);
   delay(1000);
 }
 void setup() {

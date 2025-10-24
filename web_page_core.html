@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script>
+    // Se reemplaza en el servidor
+    window.UPDATE_MS = Number(%UPDATE_MS%);
+    window.intervalId = null;
+  </script>
+  <style>
+    body{font-family:Arial; text-align:center;}
+    button{margin:6px; padding:8px 14px;}
+  </style>
+</head>
+<body>
+  <h1>Heat Transfer - Monitor y Control de Relé</h1>
+
+  <h2>Configuración de Límites</h2>
+  <p>Calentamiento (MLX90614): <span id="tempLimitDisplay">No configurado</span></p>
+  <form id="setLimitForm">
+    <input type="number" id="setLimitInput" min="0" max="90" step="0.01" placeholder="0.00 - 90.00 °C" required>
+    <input type="submit" value="Actualizar Límite">
+  </form>
+  <p id="tempLimitMessage" style="color:red;"></p>
+
+  <p>Crítico (AHT10): <span id="criticalTempLimitDisplay">No configurado</span></p>
+  <form id="setCriticalLimitForm">
+    <input type="number" id="setCriticalLimitInput" min="0" max="45" step="0.01" placeholder="0.00 - 45.00 °C" required>
+    <input type="submit" value="Actualizar Límite Crítico">
+  </form>
+  <p id="criticalTempLimitMessage" style="color:red;"></p>
+
+  <h2>Control del Relé</h2>
+  <p id="relayMessage">Cargando estado...</p>
+  <button id="relayButton" onclick="toggleRelay()">Encender Relé</button>
+
+  <h2>Lecturas de Sensores</h2>
+  <p>MLX90614 - Objeto: <span id="mlxTempObj">--°C</span> | Ambiente: <span id="mlxTempAmb">--°C</span></p>
+  <p>AHT10 Interno: <span id="ahtTemp1">--°C</span> / <span id="ahtHum1">--%</span></p>
+  <p>AHT10 Externo: <span id="ahtTemp2">--°C</span> / <span id="ahtHum2">--%</span></p>
+  <p>DHT11 Interno: <span id="dhtTemp2">--°C</span> / <span id="dhtHum2">--%</span></p>
+  <p>DHT11 Externo: <span id="dhtTemp1">--°C</span> / <span id="dhtHum1">--%</span></p>
+
+  <button onclick="exportCSV()">Exportar CSV</button>
+
+  <!--CHART_PLACEHOLDER-->
+)HTML";
+
+const char index_tail[] PROGMEM = R"HTML(
+<script>
+// ---------- Helpers ----------
+function setText(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; }
+
+// ---------- CSV ----------
+let csvData = [['Tiempo','AHT10 Interno','AHT10 Externo','DHT11 Interno','DHT11 Externo','MLX Obj','MLX Amb','Δt (ms)']];
+let lastTs = null;
+
+function csvPush(d){
+  if(!d) return;
+  const ts = Number(d.ts ?? d.uptime_ms);
+  let dt = '';
+  if(Number.isFinite(ts)){
+    if(lastTs!=null) dt = ts - lastTs; // milisegundos reales entre muestras
+    lastTs = ts;
+  }
+  csvData.push([ d.tiempo || '', d.ahtTemp1, d.ahtTemp2, d.dhtTemp2, d.dhtTemp1, d.mlxTempObj, d.mlxTempAmb, dt ]);
+}
+
+function exportCSV(){
+  const rows = csvData.map(r=>r.join(',')).join('\n');
+  const blob = new Blob([rows], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='Heat_Transfer.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------- UI ----------
+function toggleRelay(){
+  fetch('/toggleRelay').then(()=>updateSensorData());
+}
+
+function bindForms(){
+  const f1 = document.getElementById('setLimitForm');
+  if(f1) f1.addEventListener('submit', e=>{
+    e.preventDefault();
+    const v = parseFloat(document.getElementById('setLimitInput').value);
+    if(isNaN(v) || v<0 || v>90){ setText('tempLimitMessage','El valor debe estar entre 0 y 90°C.'); return; }
+    fetch('/setlimit/?temp='+v.toFixed(2)).then(()=>{
+      setText('tempLimitMessage','');
+      setText('tempLimitDisplay', v.toFixed(2)+'°C');
+      updateSensorData();
+    });
+  });
+
+  const f2 = document.getElementById('setCriticalLimitForm');
+  if(f2) f2.addEventListener('submit', e=>{
+    e.preventDefault();
+    const v = parseFloat(document.getElementById('setCriticalLimitInput').value);
+    if(isNaN(v) || v<0 || v>45){ setText('criticalTempLimitMessage','El valor debe estar entre 0 y 45°C.'); return; }
+    fetch('/setcriticallimit/?temp='+v.toFixed(2)).then(()=>{
+      setText('criticalTempLimitMessage','');
+      setText('criticalTempLimitDisplay', v.toFixed(2)+'°C');
+      updateSensorData();
+    });
+  });
+}
+
+// ---------- Datos ----------
+function updateSensorData(){
+  fetch('/sensordata',{cache:'no-store'})
+    .then(r=>r.ok ? r.json() : Promise.reject())
+    .then(d=>{
+      // DOM
+      setText('ahtTemp1', d.ahtTemp1+'°C'); setText('ahtHum1', d.ahtHum1+'%');
+      setText('ahtTemp2', d.ahtTemp2+'°C'); setText('ahtHum2', d.ahtHum2+'%');
+      setText('dhtTemp1', d.dhtTemp1+'°C'); setText('dhtHum1', d.dhtHum1+'%');
+      setText('dhtTemp2', d.dhtTemp2+'°C'); setText('dhtHum2', d.dhtHum2+'%');
+      setText('mlxTempObj', d.mlxTempObj+'°C'); setText('mlxTempAmb', d.mlxTempAmb+'°C');
+      setText('relayMessage', d.relayMessage);
+      setText('relayButton', d.relayState ? 'Apagar Relé' : 'Encender Relé');
+
+      // CSV
+      csvPush(d);
+
+      // Intervalo dinámico
+      const newMs = Number(d.updateMs);
+      if(Number.isFinite(newMs) && newMs>0 && newMs!==window.UPDATE_MS){
+        window.UPDATE_MS = newMs;
+        if(window.intervalId) clearInterval(window.intervalId);
+        window.intervalId = setInterval(updateSensorData, window.UPDATE_MS);
+      }
+
+      // Gráfica (opcional)
+      if(window.chartUpdate) window.chartUpdate(d);
+    })
+    .catch(()=>{ /* opcional: mostrar error */ });
+}
+
+// ---------- Init ----------
+document.addEventListener('DOMContentLoaded', ()=>{
+  bindForms();
+  updateSensorData();
+  window.intervalId = setInterval(updateSensorData, window.UPDATE_MS);
+});
+</script>
+</body>
+</html>
