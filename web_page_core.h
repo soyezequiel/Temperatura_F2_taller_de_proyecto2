@@ -38,6 +38,7 @@ const char index_head[] PROGMEM = R"HTML(
   <button id='relayButton' onclick='toggleRelay()'>Encender Rele</button>
 
   <p>Tiempo: <span id='time'>--</span> </p>
+  <p>delta: <span id='delta'>--</span> </p>
   <h2>Lecturas de Sensores</h2>
   <p>MLX90614 - Objeto: <span id='mlxTempObj'>--°C</span> | Ambiente: <span id='mlxTempAmb'>--°C</span></p>
   <p>AHT10 Interno: <span id='ahtTemp1'>--°C</span> / <span id='ahtHum1'>--%</span></p>
@@ -123,17 +124,53 @@ const char index_tail[] PROGMEM = R"HTML(
     setInterval(updateSensorData, UPDATE_MS);
   });
     // ===== CSV =====
+
+
+    function diferenciaTiempos(t1, t2) {
+      function aMilisegundos(t) {
+        if (t == null) return null;               // null o undefined
+        t = String(t).trim();
+        if (!t) return null;                      // vacío
+
+        // Formatos válidos: HH:MM:SS o HH:MM:SS.mmm
+        const m = t.match(/^(\d{1,2}):([0-5]?\d):([0-5]?\d)(?:\.(\d{1,3}))?$/);
+        if (!m) return null;
+
+        let [, hh, mm, ss, ms = "0"] = m;
+
+        // Normalizar ms a 3 dígitos (e.g. "7"->"700", "45"->"450")
+        if (ms.length === 1) ms = ms + "00";
+        else if (ms.length === 2) ms = ms + "0";
+
+        const H  = parseInt(hh, 10);
+        const M  = parseInt(mm, 10);
+        const S  = parseInt(ss, 10);
+        const MS = parseInt(ms.slice(0, 3), 10);
+
+        return H * 3600000 + M * 60000 + S * 1000 + MS;
+    }
+      const diffMs = Math.abs(aMilisegundos(t2) - aMilisegundos(t1));
+      return `${diffMs}`;
+    }
+
+    // Ejemplo:
+    
+
     let csvData = [['Tiempo','AHT10 Interno','AHT10 Externo','DHT11 Interno','DHT11 Externo','MLX Obj','MLX Amb']];
     let lastCsvTime = '';
     function csvPush(d){
       // Evita duplicar la misma marca de tiempo
-      if (!d || !d.tiempo || d.tiempo === lastCsvTime) return;
-      lastCsvTime = d.tiempo;
+      if (!d || !d.tiempo || d.tiempoLectura === lastCsvTime) return;
+      let delta= diferenciaTiempos(lastCsvTime, d.tiempoLectura);
+      console.log(delta);
+      setText('delta', delta );       
+      lastCsvTime = d.tiempoLectura;
       csvData.push([
-        d.tiempo,
+        d.tiempoLectura,
         d.ahtTemp1, d.ahtTemp2,
         d.dhtTemp2, d.dhtTemp1,
-        d.mlxTempObj, d.mlxTempAmb
+        d.mlxTempObj, d.mlxTempAmb,
+        delta
       ]);
     }
     function exportCSV(){

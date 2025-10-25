@@ -44,20 +44,21 @@ String header;
 //  TIEMPOS / PERIODOS
 // ===============================================================
 // Escaneo de sensores
-#define SENSOR_INTERVAL_MS     10000   // cada 1 s
-#define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
-#define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
+#define SENSOR_INTERVAL_MS     1000   // cada 1 s
+// #define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
+// #define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
 // Actualización web (gráfica / fetch)
-#define WEB_UPDATE_MS          1000   // cada 1 s
+#define WEB_UPDATE_MS          250   // cada 1 s
 // Timeout de cliente web
 #define WEB_CLIENT_TIMEOUT_MS  2000   // 2 s sin tráfico ⇒ cortar conexión
 
-int periodo=SENSOR_INTERVAL_MS_LOW;
+//int periodo=SENSOR_INTERVAL_MS_LOW;
 
 unsigned long tiempoInicial = 0;  // Guarda el momento de inicio
 unsigned long tiempoActual = 0;
 
-
+unsigned long  lecturaAnterior;
+unsigned long  tiempoLectura;
 
 
 // ===============================================================
@@ -123,7 +124,7 @@ String formatoTiempo(unsigned long milisegundosTotales) {
 
     char tiempoFormato[13];
     sprintf(tiempoFormato, "%02d:%02d:%02d.%03d", horas, minutos, segundos, ms);
-
+    //sprintf(tiempoFormato, "%02d:%02d:%02d", horas, minutos, segundos);
     return String(tiempoFormato);
 }
 void releUpdate(){
@@ -211,8 +212,11 @@ void leerSensores() {
 void sensorTask(void *pvParameters) {
   for(;;) {
     leerSensores();
+    lecturaAnterior=tiempoLectura;
+    tiempoLectura=millis();
     releUpdate();
     releUpdateDesbloqueo();
+    debug.infof("tiempo de sensado: %s  Delta: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior );
     //tiempoFormato = formatoTiempo(tiempo);
     //tiempo += 1; 
     vTaskDelay(pdMS_TO_TICKS(SENSOR_INTERVAL_MS));
@@ -247,6 +251,7 @@ void webServerTask(void *pvParameters) {
 
                 String jsonResponse = "{";
                 jsonResponse += "\"tiempo\": \"" + tiempoFormato + "\",";
+                jsonResponse += "\"tiempoLectura\": \"" + formatoTiempo(tiempoLectura) + "\",";
                 jsonResponse += "\"ahtTemp1\": \"" + formatFloat(ahtTemp1) + "\",";
                 jsonResponse += "\"ahtHum1\": \"" + formatFloat(ahtHum1) + "\",";
                 jsonResponse += "\"ahtTemp2\": \"" + formatFloat(ahtTemp2) + "\",";
