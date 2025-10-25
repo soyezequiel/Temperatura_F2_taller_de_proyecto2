@@ -44,15 +44,15 @@ String header;
 //  TIEMPOS / PERIODOS
 // ===============================================================
 // Escaneo de sensores
-#define SENSOR_INTERVAL_MS     1000   // cada 1 s
-// #define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
-// #define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
+#define SENSOR_INTERVAL_MS     1000-134+6   // cada 1 s
+#define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
+#define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
 // Actualización web (gráfica / fetch)
 #define WEB_UPDATE_MS          250   // cada 1 s
 // Timeout de cliente web
 #define WEB_CLIENT_TIMEOUT_MS  2000   // 2 s sin tráfico ⇒ cortar conexión
 
-//int periodo=SENSOR_INTERVAL_MS_LOW;
+int periodo=SENSOR_INTERVAL_MS_LOW;
 
 unsigned long tiempoInicial = 0;  // Guarda el momento de inicio
 unsigned long tiempoActual = 0;
@@ -219,7 +219,7 @@ void sensorTask(void *pvParameters) {
     debug.infof("tiempo de sensado: %s  Delta: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior );
     //tiempoFormato = formatoTiempo(tiempo);
     //tiempo += 1; 
-    vTaskDelay(pdMS_TO_TICKS(SENSOR_INTERVAL_MS));
+    vTaskDelay(pdMS_TO_TICKS(periodo));
   }
 }
 // Funcion de tarea para el nucleo 2: gestionar la interfaz web
@@ -276,6 +276,8 @@ void webServerTask(void *pvParameters) {
                   relayState = !relayState;
                   digitalWrite(RELAY_PIN, relayState ? LOW : HIGH);
                   digitalWrite(LED, relayState ? HIGH : LOW);
+                  
+                  periodo=relayState ? SENSOR_INTERVAL_MS_HIGH : SENSOR_INTERVAL_MS_LOW;
                 }
                 client.println("HTTP/1.1 200 OK");
                 client.println("Connection: close");
