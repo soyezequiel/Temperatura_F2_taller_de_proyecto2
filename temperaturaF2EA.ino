@@ -44,9 +44,10 @@ String header;
 //  TIEMPOS / PERIODOS
 // ===============================================================
 // Escaneo de sensores
-#define SENSOR_INTERVAL_MS     1000-140   // cada 1 s
-#define SENSOR_INTERVAL_MS_LOW     10000-140   // cada 1 s
-#define SENSOR_INTERVAL_MS_HIGH     1000-140   // cada 1 s
+
+#define SENSOR_INTERVAL_MS         1000         // cada 1 s -140
+#define SENSOR_INTERVAL_MS_LOW     10000    // cada 1 s -140
+#define SENSOR_INTERVAL_MS_HIGH    1000    // cada 1 s -140
 // Actualización web (gráfica / fetch)
 #define WEB_UPDATE_MS          500   // cada 1 s
 // Timeout de cliente web
