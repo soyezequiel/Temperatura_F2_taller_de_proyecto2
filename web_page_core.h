@@ -51,10 +51,11 @@ const char index_head[] PROGMEM = R"HTML(
 )HTML";
 
 const char index_tail[] PROGMEM = R"HTML(
-  <script>
+<script>
   // ===== Utilidades genéricas =====
   function setText(id, txt) { var el = document.getElementById(id); if (el) el.innerHTML = txt; }
   function n(x){ var v = parseFloat(x); return isNaN(v) ? null : v; }
+
   // ===== AJAX helpers =====
   function callEndpoint(url, cb) {
     var xhr = new XMLHttpRequest();
@@ -64,6 +65,7 @@ const char index_tail[] PROGMEM = R"HTML(
     };
     xhr.send();
   }
+
   // ===== Estado/acciones UI =====
   function toggleRelay() {
     callEndpoint('/toggleRelay', function(){ updateSensorData(); });
@@ -95,97 +97,112 @@ const char index_tail[] PROGMEM = R"HTML(
     });
   }
 
-  // ===== Sensores (DOM básico; si hay gráfica, su JS la usa también) =====
+  // ===== Poll de sensores (con candado para no solapar requests) =====
+  let enVuelo = false;
+
   function updateSensorData() {
+    if (enVuelo) return;
+    enVuelo = true;
+
     var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/sensordata', true);
+    xhr.timeout = 3000;
+
     xhr.onreadystatechange = function () {
-      if (this.readyState === 4 && this.status === 200) {
-        var d = JSON.parse(this.responseText);
-        setText('ahtTemp1', d.ahtTemp1 + '°C'); setText('ahtHum1',  d.ahtHum1  + '%');
-        setText('ahtTemp2', d.ahtTemp2 + '°C'); setText('ahtHum2',  d.ahtHum2  + '%');
-        setText('dhtTemp1', d.dhtTemp1 + '°C'); setText('dhtHum1',  d.dhtHum1  + '%');
-        setText('dhtTemp2', d.dhtTemp2 + '°C'); setText('dhtHum2',  d.dhtHum2  + '%');
-        setText('mlxTempObj', d.mlxTempObj + '°C'); setText('mlxTempAmb', d.mlxTempAmb + '°C');
-        setText('relayMessage', d.relayMessage);
-        setText('relayButton', d.relayState ? 'Apagar Rele' : 'Encender Rele');
-        setText('time', d.tiempo);
-        csvPush(d);
-        // Si la gráfica está habilitada, el script de la gráfica se “cuelga” de esta función:
-        if (window.chartUpdate) window.chartUpdate(d);
+      if (xhr.readyState === 4) {
+        enVuelo = false;
+        if (xhr.status === 200) {
+          try {
+            var d = JSON.parse(xhr.responseText);
+
+            setText('ahtTemp1', d.ahtTemp1 + '°C'); setText('ahtHum1',  d.ahtHum1  + '%');
+            setText('ahtTemp2', d.ahtTemp2 + '°C'); setText('ahtHum2',  d.ahtHum2  + '%');
+            setText('dhtTemp1', d.dhtTemp1 + '°C'); setText('dhtHum1',  d.dhtHum1  + '%');
+            setText('dhtTemp2', d.dhtTemp2 + '°C'); setText('dhtHum2',  d.dhtHum2  + '%');
+            setText('mlxTempObj', d.mlxTempObj + '°C'); setText('mlxTempAmb', d.mlxTempAmb + '°C');
+            setText('relayMessage', d.relayMessage);
+            setText('relayButton', d.relayState ? 'Apagar Rele' : 'Encender Rele');
+            setText('time', d.tiempo);
+
+            csvPush(d);
+            if (window.chartUpdate) window.chartUpdate(d);
+          } catch (e) {
+            console.warn('JSON parse error:', e);
+          }
+        } else {
+          console.warn('HTTP error:', xhr.status);
+        }
       }
     };
-    xhr.open('GET', '/sensordata', true);
+
+    xhr.onerror = function(){ enVuelo = false; };
+    xhr.ontimeout = function(){ enVuelo = false; };
+
     xhr.send();
   }
 
   document.addEventListener('DOMContentLoaded', function(){
     bindForms();
-    updateSensorData();
-    setInterval(updateSensorData, UPDATE_MS);
+    updateSensorData();                       // primera lectura
+    setInterval(updateSensorData, UPDATE_MS); // el candado evita solapamientos
   });
-    // ===== CSV =====
 
-
-    function diferenciaTiempos(t1, t2) {
-      function aMilisegundos(t) {
-        if (t == null) return null;               // null o undefined
-        t = String(t).trim();
-        if (!t) return null;                      // vacío
-
-        // Formatos válidos: HH:MM:SS o HH:MM:SS.mmm
-        const m = t.match(/^(\d{1,2}):([0-5]?\d):([0-5]?\d)(?:\.(\d{1,3}))?$/);
-        if (!m) return null;
-
-        let [, hh, mm, ss, ms = "0"] = m;
-
-        // Normalizar ms a 3 dígitos (e.g. "7"->"700", "45"->"450")
-        if (ms.length === 1) ms = ms + "00";
-        else if (ms.length === 2) ms = ms + "0";
-
-        const H  = parseInt(hh, 10);
-        const M  = parseInt(mm, 10);
-        const S  = parseInt(ss, 10);
-        const MS = parseInt(ms.slice(0, 3), 10);
-
-        return H * 3600000 + M * 60000 + S * 1000 + MS;
+  // ===== CSV =====
+  function diferenciaTiempos(t1, t2) {
+    function aMilisegundos(t) {
+      if (!t) return 0; // null/undefined/'' -> 0
+      t = String(t).trim();
+      const m = t.match(/^(\d{1,2}):([0-5]?\d):([0-5]?\d)(?:\.(\d{1,3}))?$/);
+      if (!m) return 0;
+      let [, hh, mm, ss, ms = "0"] = m;
+      if (ms.length === 1) ms += "00";
+      else if (ms.length === 2) ms += "0";
+      const H  = parseInt(hh, 10);
+      const M  = parseInt(mm, 10);
+      const S  = parseInt(ss, 10);
+      const MS = parseInt(ms.slice(0, 3), 10);
+      return H * 3600000 + M * 60000 + S * 1000 + MS;
     }
-      const diffMs = Math.abs(aMilisegundos(t2) - aMilisegundos(t1));
-      return `${diffMs}`;
-    }
+    const diffMs = Math.abs(aMilisegundos(t2) - aMilisegundos(t1));
+    return String(diffMs);
+  }
 
-    // Ejemplo:
+  // Agregué la columna "Delta (ms)" al header para que coincidan las columnas
+  let csvData = [['Tiempo','AHT10 Interno','AHT10 Externo','DHT11 Interno','DHT11 Externo','MLX Obj','MLX Amb','Delta (ms)']];
+  let lastCsvTime = '';
+  let lecturas=0;
+  function csvPush(d){
+    if (!d || !d.tiempoLectura) return;
+    if (d.tiempoLectura === lastCsvTime) return;
+
+    const delta = diferenciaTiempos(lastCsvTime, d.tiempoLectura);
+    // console.log(delta);
     
+    setText('delta', delta);
+    lastCsvTime = d.tiempoLectura;
+    lecturas++;
+    // console.log(lecturas);
+    csvData.push([
+      d.tiempoLectura,
+      d.ahtTemp1, d.ahtTemp2,
+      d.dhtTemp2, d.dhtTemp1,
+      d.mlxTempObj, d.mlxTempAmb,
+      delta
+    ]);
+  }
 
-    let csvData = [['Tiempo','AHT10 Interno','AHT10 Externo','DHT11 Interno','DHT11 Externo','MLX Obj','MLX Amb']];
-    let lastCsvTime = '';
-    function csvPush(d){
-      // Evita duplicar la misma marca de tiempo
-      if (!d || !d.tiempo || d.tiempoLectura === lastCsvTime) return;
-      let delta= diferenciaTiempos(lastCsvTime, d.tiempoLectura);
-      console.log(delta);
-      setText('delta', delta );       
-      lastCsvTime = d.tiempoLectura;
-      csvData.push([
-        d.tiempoLectura,
-        d.ahtTemp1, d.ahtTemp2,
-        d.dhtTemp2, d.dhtTemp1,
-        d.mlxTempObj, d.mlxTempAmb,
-        delta
-      ]);
-    }
-    function exportCSV(){
-      // Arma el CSV en el navegador
-      const rows = csvData.map(row => row.join(',')).join('\n');
-      const blob = new Blob([rows], {type: 'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'Heat_Transfer.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-  </script>
+  function exportCSV(){
+    const rows = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([rows], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Heat_Transfer.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+</script>
 </body>
 </html>
 )HTML";

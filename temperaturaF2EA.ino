@@ -44,11 +44,11 @@ String header;
 //  TIEMPOS / PERIODOS
 // ===============================================================
 // Escaneo de sensores
-#define SENSOR_INTERVAL_MS     1000-134+6   // cada 1 s
-#define SENSOR_INTERVAL_MS_LOW     10000   // cada 1 s
-#define SENSOR_INTERVAL_MS_HIGH     1000   // cada 1 s
+#define SENSOR_INTERVAL_MS     1000-140   // cada 1 s
+#define SENSOR_INTERVAL_MS_LOW     10000-140   // cada 1 s
+#define SENSOR_INTERVAL_MS_HIGH     1000-140   // cada 1 s
 // Actualización web (gráfica / fetch)
-#define WEB_UPDATE_MS          250   // cada 1 s
+#define WEB_UPDATE_MS          500   // cada 1 s
 // Timeout de cliente web
 #define WEB_CLIENT_TIMEOUT_MS  2000   // 2 s sin tráfico ⇒ cortar conexión
 
@@ -60,7 +60,7 @@ unsigned long tiempoActual = 0;
 unsigned long  lecturaAnterior;
 unsigned long  tiempoLectura;
 
-
+unsigned long  lecturas=0;
 // ===============================================================
 //  INSTANCIAS DE SENSORES
 // ===============================================================
@@ -212,11 +212,12 @@ void leerSensores() {
 void sensorTask(void *pvParameters) {
   for(;;) {
     leerSensores();
+    lecturas++;
     lecturaAnterior=tiempoLectura;
     tiempoLectura=millis();
     releUpdate();
     releUpdateDesbloqueo();
-    debug.infof("tiempo de sensado: %s  Delta: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior );
+    //debug.infof("tiempo de sensado: %s  Delta: %lu,  lecturas totales: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior,lecturas );
     //tiempoFormato = formatoTiempo(tiempo);
     //tiempo += 1; 
     vTaskDelay(pdMS_TO_TICKS(periodo));
@@ -371,15 +372,27 @@ void sensor_setup(){
   esp_log_level_set("i2c",        ESP_LOG_NONE);   // o ESP_LOG_ERROR si querés ver solo errores graves
   esp_log_level_set("i2c.master", ESP_LOG_NONE);
 
+
+
+
+
   Wire.begin(SDA_1, SCL_1);
   I2C_2.begin(SDA_2, SCL_2);
+
+
+  mlx_ok  = mlx.begin();
+
+
   aht1_ok = aht10_1.begin(&Wire);
   aht2_ok = aht10_2.begin(&I2C_2);
-  mlx_ok  = mlx.begin();
+
+
   delay(1000);
   dht1.begin();
   dht2.begin();
 
+
+  
   // para debug
   debug.mlxf(mlx_ok  ? "✅ MLX90614 listo (Wire)"        : "❌ MLX90614 no inicializó");
   debug.ahtf(aht1_ok ? "✅ AHT #1 listo (Wire)"          : "❌ AHT #1 falló");
