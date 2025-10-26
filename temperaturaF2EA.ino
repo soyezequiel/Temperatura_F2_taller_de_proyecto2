@@ -8,6 +8,9 @@
 #include "Debug.h"
 
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+
 #define ENABLE_CHART 1   // ⇦ poné 0 para quitar la gráfica
 #include "web_page_core.h"
 #if ENABLE_CHART
@@ -151,77 +154,6 @@ void releUpdateDesbloqueo(){
     digitalWrite(RELAY_PIN, HIGH);
     digitalWrite(LED, LOW);
     //debug.infof("Limite critico alcanzado. Rele apagado definitivamente.");
-  }
-}
-bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="interno") {
-    bool error=false;
-    float dhtTempAux = dht.readTemperature();
-    float dhtHumAux = dht.readHumidity();
-    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { debug.errorf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
-    else {
-            dhtTemp = dhtTempAux;
-            dhtHum = dhtHumAux;
-            debug.dhtf("#(%s) → T: %.2f °C | H: %.2f %%",ubicacion, dhtTemp, dhtHum);
-    }
-    return error; 
-}
-bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion="interno") {
-    bool error=false;
-    if (aht_ok) {
-    sensors_event_t humidityEvent, tempEvent;
-    aht10.getEvent(&humidityEvent, &tempEvent);
-    if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
-        debug.errorf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
-        temp = -100;
-        humidity = -100;
-    } else {
-        debug.ahtf("AHT #(%s) → T: %.2f °C | H: %.2f %% ",ubicacion, tempEvent.temperature, humidityEvent.relative_humidity);
-            temp = tempEvent.temperature;
-            humidity = humidityEvent.relative_humidity;
-    }
-    } else { debug.errorf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
-        temp = 0;
-        humidity = 0;
-    }
-    return error; 
-}
-bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
-    bool error=false;
-    // Lee omfrarojo
-    // ----- MLX90614 -----
-    if (mlx_ok) {
-    mlxTempObj = mlx.readObjectTempC();
-    mlxTempAmb = mlx.readAmbientTempC();
-    if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { debug.errorf("❌ MLX90614 lectura inválida"); error = true; }
-    else debug.mlxf("MLX90614 → Tamb: %.2f °C | Tobj: %.2f °C", mlxTempAmb, mlxTempObj);
-    } else {
-    debug.errorf("⚠️ MLX90614 no inicializado");
-    error = true;
-    }
-    return error; 
-}
-// Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
-void leerSensores() {
-  bool error = false;
-  leerDHT(dht1, dhtTemp1, dhtHum1);
-  leerDHT(dht2, dhtTemp2, dhtHum2, "externo");
-  leerAHT(aht10_1,aht1_ok,ahtTemp1, ahtHum1);
-  leerAHT(aht10_2,aht2_ok,ahtTemp2, ahtHum2, "externo");
-  leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
-  debug.infoSensor("-----------------------------");
-}
-void sensorTask(void *pvParameters) {
-  for(;;) {
-    leerSensores();
-    lecturas++;
-    lecturaAnterior=tiempoLectura;
-    tiempoLectura=millis();
-    releUpdate();
-    releUpdateDesbloqueo();
-    //debug.infof("tiempo de sensado: %s  Delta: %lu,  lecturas totales: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior,lecturas );
-    //tiempoFormato = formatoTiempo(tiempo);
-    //tiempo += 1; 
-    vTaskDelay(pdMS_TO_TICKS(periodo));
   }
 }
 // Funcion de tarea para el nucleo 2: gestionar la interfaz web
@@ -369,6 +301,135 @@ void wifi_setup(){
   Serial.println(WiFi.localIP());
   server.begin();
 }
+bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="interno") {
+    bool error=false;
+    float dhtTempAux = dht.readTemperature();
+    float dhtHumAux = dht.readHumidity();
+    if (isnan(dhtTempAux) || isnan(dhtHumAux)) { debug.errorf("❌ DHT #%s lectura inválida",ubicacion); error = true; }
+    else {
+            dhtTemp = dhtTempAux;
+            dhtHum = dhtHumAux;
+            debug.dhtf("#(%s) → T: %.2f °C | H: %.2f %%",ubicacion, dhtTemp, dhtHum);
+    }
+    return error; 
+}
+bool leerAHT(Adafruit_AHTX0 &aht10, bool aht_ok, float  &temp, float  &humidity, const char *ubicacion="interno") {
+    bool error=false;
+    if (aht_ok) {
+    sensors_event_t humidityEvent, tempEvent;
+    aht10.getEvent(&humidityEvent, &tempEvent);
+    if (isnan(tempEvent.temperature) || isnan(humidityEvent.relative_humidity)) {
+        debug.errorf("❌ AHT #(%s) lectura inválida ",ubicacion); error = true;
+        temp = -100;
+        humidity = -100;
+    } else {
+        debug.ahtf("AHT #(%s) → T: %.2f °C | H: %.2f %% ",ubicacion, tempEvent.temperature, humidityEvent.relative_humidity);
+            temp = tempEvent.temperature;
+            humidity = humidityEvent.relative_humidity;
+    }
+    } else { debug.errorf("⚠️ AHT #(%s) no inicializado",ubicacion); error = true; 
+        temp = 0;
+        humidity = 0;
+    }
+    return error; 
+}
+bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &mlxTempAmb, const char *ubicacion="interno") {
+    bool error=false;
+    // Lee omfrarojo
+    // ----- MLX90614 -----
+    if (mlx_ok) {
+    mlxTempObj = mlx.readObjectTempC();
+    mlxTempAmb = mlx.readAmbientTempC();
+    if (isnan(mlxTempAmb) || isnan(mlxTempObj)) { debug.errorf("❌ MLX90614 lectura inválida"); error = true; }
+    else debug.mlxf("MLX90614 → Tamb: %.2f °C | Tobj: %.2f °C", mlxTempAmb, mlxTempObj);
+    } else {
+    debug.errorf("⚠️ MLX90614 no inicializado");
+    error = true;
+    }
+    return error; 
+}
+// Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
+void leerSensores() {
+  bool error = false;
+  leerDHT(dht1, dhtTemp1, dhtHum1);
+  leerDHT(dht2, dhtTemp2, dhtHum2, "externo");
+  leerAHT(aht10_1,aht1_ok,ahtTemp1, ahtHum1);
+  leerAHT(aht10_2,aht2_ok,ahtTemp2, ahtHum2, "externo");
+  leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
+  debug.infoSensor("-----------------------------");
+}
+
+EventGroupHandle_t eg;
+
+// Definí tus banderas:
+const EventBits_t scan_ok    = (1 << 0);
+const EventBits_t DHT_1_OK    = (1 << 1);
+const EventBits_t DHT_2_OK    = (1 << 2);
+const EventBits_t AHT_1_OK   = (1 << 3);
+// const EventBits_t AHT_2_OK  = (1 << 3);
+// const EventBits_t MLX_OK  = (1 << 3);
+
+void DHT_1_task(void *pvParameters) {
+    for(;;){
+    // Espera AND: relé ON y WiFi OK. Limpia al salir.
+    xEventGroupWaitBits(eg,
+      scan_ok,
+      pdTRUE,   // clearOnExit
+      pdTRUE,   // waitForAllBits (AND)
+      pdMS_TO_TICKS(1000)
+    );
+    leerDHT(dht1, dhtTemp1, dhtHum1);
+    xEventGroupSetBits(eg, DHT_1_OK);
+  }
+}
+void DHT_2_task(void *pvParameters) {
+    for(;;){
+    // Espera AND: relé ON y WiFi OK. Limpia al salir.
+    xEventGroupWaitBits(eg,
+      scan_ok,
+      pdTRUE,   // clearOnExit
+      pdTRUE,   // waitForAllBits (AND)
+      pdMS_TO_TICKS(1000)
+    );
+    leerDHT(dht2, dhtTemp2, dhtHum2, "externo");
+    xEventGroupSetBits(eg, DHT_2_OK);
+  }
+}
+void AHT_1_task(void *pvParameters) {
+    for(;;){
+    // Espera AND: relé ON y WiFi OK. Limpia al salir.
+    xEventGroupWaitBits(eg,
+      scan_ok,
+      pdTRUE,   // clearOnExit
+      pdTRUE,   // waitForAllBits (AND)
+      pdMS_TO_TICKS(1000)
+    );
+    leerAHT(aht10_1,aht1_ok,ahtTemp1, ahtHum1);
+    xEventGroupSetBits(eg, AHT_1_OK);
+  }
+}
+void sensorTask(void *pvParameters) {
+  for(;;) {
+    xEventGroupWaitBits(eg,
+      DHT_1_OK | DHT_2_OK | AHT_1_OK,
+     //DHT_1_OK | DHT_2_OK,
+     // DHT_1_OK | AHT_1_OK,
+      pdTRUE,   // clearOnExit
+      pdTRUE,   // waitForAllBits (AND)
+      portMAX_DELAY
+    );
+    lecturas++;
+    lecturaAnterior=tiempoLectura;
+    tiempoLectura=millis();
+    releUpdate();
+    releUpdateDesbloqueo();
+    debug.infof("tiempo de sensado: %s  Delta: %lu,  lecturas totales: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior,lecturas );
+    //tiempoFormato = formatoTiempo(tiempo);
+    //tiempo += 1; 
+    vTaskDelay(pdMS_TO_TICKS(periodo));
+    xEventGroupSetBits(eg, scan_ok);
+  }
+}
 void sensor_setup(){
   esp_log_level_set("i2c",        ESP_LOG_NONE);   // o ESP_LOG_ERROR si querés ver solo errores graves
   esp_log_level_set("i2c.master", ESP_LOG_NONE);
@@ -414,8 +475,23 @@ void setup() {
   wifi_setup();
   sensor_setup();
   configurar_LED();
-  xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
+   eg = xEventGroupCreate();
+
+  xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 2, NULL, 1);
+  xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 2, NULL, 1);
+  
+
+
+
+
+ 
+  // configurar pin de botón e ISR si aplica…
+
+  xTaskCreatePinnedToCore(DHT_1_task,  "DHT1", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(DHT_2_task,   "DHT2",  4096, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(AHT_1_task, "AHT1",  4096, nullptr, 1, nullptr, 1);
+  // xTaskCreatePinnedToCore(simulador,    "sim",  4096, nullptr, 1, nullptr, 1);
+  xEventGroupSetBits(eg, scan_ok);
 }
 
 void loop() {
