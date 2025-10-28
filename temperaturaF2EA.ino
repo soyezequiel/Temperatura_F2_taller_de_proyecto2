@@ -46,7 +46,7 @@ String header;
 // Escaneo de sensores
 
 #define SENSOR_INTERVAL_MS         1000         // cada 1 s -140
-#define SENSOR_INTERVAL_MS_LOW     10000    // cada 1 s -140
+#define SENSOR_INTERVAL_MS_LOW     10000    // cada 10 s -140
 #define SENSOR_INTERVAL_MS_HIGH    1000    // cada 1 s -140
 // Actualización web (gráfica / fetch)
 #define WEB_UPDATE_MS          500   // cada 1 s
@@ -107,6 +107,41 @@ String tiempoFormato  = "00:00:00";
 //  DEBUG
 // ===============================================================
 Debug debug;
+
+// ===============================================================
+//  CALIBRAR
+// ===============================================================
+
+
+
+
+typedef struct {
+    float suma;
+    int count;
+    float promedio;
+} PromedioDinamico;
+
+void promedio_init(PromedioDinamico *p) {
+    p->suma = 0;
+    p->count = 0;
+    p->promedio = 0;
+}
+
+float promedio_add(PromedioDinamico *p, float nuevoValor) {
+    p->suma += nuevoValor;
+    p->count++;
+    p->promedio = p->suma / p->count;
+    return p->promedio;
+}
+
+
+PromedioDinamico tempDHT1;
+PromedioDinamico tempDHT2;
+PromedioDinamico tempAHT1;
+PromedioDinamico tempAHT2;
+PromedioDinamico tempMLX;
+
+
 
 
 // Funcion para convertir float a String con formato controlado
@@ -203,16 +238,78 @@ bool leerMLX(Adafruit_MLX90614 &mlx, bool mlx_ok, float  &mlxTempObj, float  &ml
 // Funcion de tarea para el nucleo 1: leer sensores y controlar el rele
 void leerSensores() {
   bool error = false;
-  leerDHT(dht1, dhtTemp1, dhtHum1);
-  leerDHT(dht2, dhtTemp2, dhtHum2, "externo");
+  leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
   leerAHT(aht10_1,aht1_ok,ahtTemp1, ahtHum1);
   leerAHT(aht10_2,aht2_ok,ahtTemp2, ahtHum2, "externo");
-  leerMLX(mlx,mlx_ok,mlxTempObj,mlxTempAmb);
+  leerDHT(dht2, dhtTemp2, dhtHum2);
+  leerDHT(dht1, dhtTemp1, dhtHum1, "externo");
+  
   debug.infoSensor("-----------------------------");
 }
+
+float promedio_global = 0;
+
+float DHT1_delta=0;
+float DHT2_delta=0;
+float AHT1_delta=0;
+float AHT2_delta=0;
+float MLX_delta=0;
+
+void calcularPromedios(int len){
+  static int contador=len;
+  if (contador-- > 0){
+    periodo=SENSOR_INTERVAL_MS_HIGH;
+    promedio_add(&tempMLX, mlxTempAmb);
+    debug.mlxf("Temperatura promedio: %f",tempMLX.promedio);
+    promedio_add(&tempAHT1, ahtTemp1);
+    debug.ahtf("Temperatura promedio: %f",tempAHT1.promedio);
+    promedio_add(&tempAHT2, ahtTemp2);
+    debug.ahtf("Temperatura promedio: %f",tempAHT2.promedio);
+    promedio_add(&tempDHT2, dhtTemp2);
+    debug.dhtf("Temperatura promedio: %f",tempDHT2.promedio);
+    promedio_add(&tempDHT1, dhtTemp1);
+    debug.dhtf("Temperatura promedio: %f",tempDHT1.promedio);
+  }else{
+    if (promedio_global == 0){
+      periodo=SENSOR_INTERVAL_MS_LOW;
+      promedio_global = (tempDHT1.promedio + tempDHT2.promedio + tempAHT1.promedio + tempAHT2.promedio + tempMLX.promedio) /5;
+      
+      MLX_delta   = promedio_global - tempMLX.promedio ;
+      AHT1_delta  = promedio_global - tempAHT1.promedio;
+      AHT2_delta  = promedio_global - tempAHT2.promedio;
+      DHT2_delta  = promedio_global - tempDHT2.promedio;
+      DHT1_delta  = promedio_global - tempDHT1.promedio;
+      
+    }
+
+  }
+
+
+}
+void calibrar(){
+
+  calcularPromedios(10);
+
+  debug.infof("Temperatura promedio global: %f",promedio_global);
+  debug.infof("Tdelta MLX  = %.3f", MLX_delta);
+  debug.infof("Tdelta AHT1 = %.3f", AHT1_delta);
+  debug.infof("Tdelta AHT2 = %.3f", AHT2_delta);
+  debug.infof("Tdelta DHT2 = %.3f", DHT2_delta);
+  debug.infof("Tdelta DHT1 = %.3f", DHT1_delta);
+
+  mlxTempAmb= mlxTempAmb + MLX_delta;
+  ahtTemp1  = ahtTemp1 + AHT1_delta;
+  ahtTemp2  = ahtTemp2 + AHT2_delta;
+  dhtTemp2  = dhtTemp2 + DHT2_delta;
+  dhtTemp1  = dhtTemp1 + DHT1_delta;
+
+
+}
+ 
 void sensorTask(void *pvParameters) {
   for(;;) {
     leerSensores();
+    calibrar();
     lecturas++;
     lecturaAnterior=tiempoLectura;
     tiempoLectura=millis();
@@ -416,6 +513,14 @@ void setup() {
   configurar_LED();
   xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
+
+  promedio_init(&tempDHT1);
+  promedio_init(&tempDHT2);
+  promedio_init(&tempAHT1);
+  promedio_init(&tempAHT2);
+  promedio_init(&tempMLX);
+
+
 }
 
 void loop() {

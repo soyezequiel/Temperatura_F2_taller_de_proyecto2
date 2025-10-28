@@ -7,10 +7,10 @@
 
 // ===== CONFIG =====
 #define DEBUG_ENABLED   1
-#define DEBUG_SENSOR    0
-#define DEBUG_DHT       0
-#define DEBUG_AHT       0
-#define DEBUG_MLX       0
+#define DEBUG_SENSOR    1
+#define DEBUG_DHT       1
+#define DEBUG_AHT       1
+#define DEBUG_MLX       1
 #define DEBUG_DHT_ERROR      1
 #define DEBUG_AHT_ERROR      1
 #define DEBUG_MLX_ERROR      1
