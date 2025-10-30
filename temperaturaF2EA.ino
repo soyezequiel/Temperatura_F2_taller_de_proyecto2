@@ -114,25 +114,46 @@ Debug debug;
 
 
 
+#define LONGITUD 10
 
 typedef struct {
+    float numeros[LONGITUD];
     float suma;
     int count;
+    int indice;     // índice circular
     float promedio;
 } PromedioDinamico;
 
 void promedio_init(PromedioDinamico *p) {
-    p->suma = 0;
+    for (int i = 0; i < LONGITUD; i++) {
+        p->numeros[i] = 0.0;
+    }
+    p->suma = 0.0;
     p->count = 0;
-    p->promedio = 0;
+    p->indice = 0;
+    p->promedio = 0.0;
 }
 
 float promedio_add(PromedioDinamico *p, float nuevoValor) {
+    // Si ya hay suficientes muestras, restar la más vieja
+    if (p->count == LONGITUD) {
+        p->suma -= p->numeros[p->indice];
+    } else {
+        p->count++;
+    }
+
+    // Guardar nuevo valor y actualizar suma
+    p->numeros[p->indice] = nuevoValor;
     p->suma += nuevoValor;
-    p->count++;
+
+    // Avanzar índice circular
+    p->indice = (p->indice + 1) % LONGITUD;
+
+    // Calcular promedio
     p->promedio = p->suma / p->count;
     return p->promedio;
 }
+
 
 
 PromedioDinamico tempDHT1;
@@ -255,61 +276,28 @@ float AHT1_delta=0;
 float AHT2_delta=0;
 float MLX_delta=0;
 
-void calcularPromedios(int len){
-  static int contador=len;
-  if (contador-- > 0){
-    periodo=SENSOR_INTERVAL_MS_HIGH;
-    promedio_add(&tempMLX, mlxTempAmb);
-    debug.mlxf("Temperatura promedio: %f",tempMLX.promedio);
-    promedio_add(&tempAHT1, ahtTemp1);
-    debug.ahtf("Temperatura promedio: %f",tempAHT1.promedio);
-    promedio_add(&tempAHT2, ahtTemp2);
-    debug.ahtf("Temperatura promedio: %f",tempAHT2.promedio);
-    promedio_add(&tempDHT2, dhtTemp2);
-    debug.dhtf("Temperatura promedio: %f",tempDHT2.promedio);
-    promedio_add(&tempDHT1, dhtTemp1);
-    debug.dhtf("Temperatura promedio: %f",tempDHT1.promedio);
-  }else{
-    if (promedio_global == 0){
-      periodo=SENSOR_INTERVAL_MS_LOW;
-      promedio_global = (tempDHT1.promedio + tempDHT2.promedio + tempAHT1.promedio + tempAHT2.promedio + tempMLX.promedio) /5;
-      
-      MLX_delta   = promedio_global - tempMLX.promedio ;
-      AHT1_delta  = promedio_global - tempAHT1.promedio;
-      AHT2_delta  = promedio_global - tempAHT2.promedio;
-      DHT2_delta  = promedio_global - tempDHT2.promedio;
-      DHT1_delta  = promedio_global - tempDHT1.promedio;
-      
-    }
-
-  }
-
-
-}
-void calibrar(){
-
-  calcularPromedios(10);
-
-  debug.infof("Temperatura promedio global: %f",promedio_global);
-  debug.infof("Tdelta MLX  = %.3f", MLX_delta);
-  debug.infof("Tdelta AHT1 = %.3f", AHT1_delta);
-  debug.infof("Tdelta AHT2 = %.3f", AHT2_delta);
-  debug.infof("Tdelta DHT2 = %.3f", DHT2_delta);
-  debug.infof("Tdelta DHT1 = %.3f", DHT1_delta);
-
-  mlxTempAmb= mlxTempAmb + MLX_delta;
-  ahtTemp1  = ahtTemp1 + AHT1_delta;
-  ahtTemp2  = ahtTemp2 + AHT2_delta;
-  dhtTemp2  = dhtTemp2 + DHT2_delta;
-  dhtTemp1  = dhtTemp1 + DHT1_delta;
-
-
+void calcularPromedios(){
+  promedio_add(&tempMLX, mlxTempAmb);
+  //debug.mlxf("Temperatura promedio: %f",tempMLX.promedio);
+  promedio_add(&tempAHT1, ahtTemp1);
+  //debug.ahtf("Temperatura promedio: %f",tempAHT1.promedio);
+  promedio_add(&tempAHT2, ahtTemp2);
+ // debug.ahtf("Temperatura promedio: %f",tempAHT2.promedio);
+  promedio_add(&tempDHT2, dhtTemp2);
+  //debug.dhtf("Temperatura promedio: %f",tempDHT2.promedio);
+  promedio_add(&tempDHT1, dhtTemp1);
+  //debug.dhtf("Temperatura promedio: %f",tempDHT1.promedio);
+  mlxTempAmb= tempMLX.promedio;
+  ahtTemp1  = tempAHT1.promedio;
+  ahtTemp2  = tempAHT2.promedio;
+  //dhtTemp2  = tempDHT2.promedio;
+  //dhtTemp1  = tempDHT1.promedio;
 }
  
 void sensorTask(void *pvParameters) {
   for(;;) {
     leerSensores();
-    calibrar();
+    calcularPromedios();
     lecturas++;
     lecturaAnterior=tiempoLectura;
     tiempoLectura=millis();
