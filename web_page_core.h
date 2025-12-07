@@ -121,7 +121,7 @@ const char index_tail[] PROGMEM = R"HTML(
             setText('dhtTemp2', d.dhtTemp2 + '°C'); setText('dhtHum2',  d.dhtHum2  + '%');
             setText('mlxTempObj', d.mlxTempObj + '°C'); setText('mlxTempAmb', d.mlxTempAmb + '°C');
             setText('relayMessage', d.relayMessage);
-            setText('relayButton', d.relayState ? 'Apagar Rele' : 'Encender Rele');
+            setText('relayButton', d.relayRequested ? 'Apagar Rele' : 'Encender Rele');
             setText('time', d.tiempo);
 
             csvPush(d);

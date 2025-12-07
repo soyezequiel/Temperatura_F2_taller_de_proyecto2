@@ -96,10 +96,13 @@ float tempLimit = 0.0;
 float criticalTempLimit = 0.0;
 bool tempLimitConfigured = false;
 bool criticalTempLimitConfigured = false;
+const float RELAY_VENTANA = 5.0; // ventanita para encendido del rele (°C)
 
 // Relé
 bool relayState  = false;
 bool relayLocked = false;
+bool relayRequested = false;     // pedido del usuario (boton web)
+bool relayCutByTemp = false;     // apagado automatico por limite MLX
 
 // Tiempo “hh:mm:ss” (relativo)
 int    tiempo         = 0;
@@ -186,29 +189,40 @@ String formatoTiempo(unsigned long milisegundosTotales) {
     //sprintf(tiempoFormato, "%02d:%02d:%02d", horas, minutos, segundos);
     return String(tiempoFormato);
 }
+
+void setRelayOutput(bool on){
+    // Aplica el estado del relé en hardware (rele + LED) y ajusta el periodo de sensado
+    relayState = on;
+    digitalWrite(RELAY_PIN, on ? HIGH : LOW); // módulo activo en alto
+    digitalWrite(LED, on ? HIGH : LOW);
+    bool fastPeriod = on || relayRequested;
+    periodo = fastPeriod ? SENSOR_INTERVAL_MS_HIGH : SENSOR_INTERVAL_MS_LOW;
+}
+
 void releUpdate(){
-    if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayState) {
+    // Ventana: corta el relé al pasar el límite y lo enciende al bajar RELAY_VENTANA
+    if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured && relayRequested) {
       if (mlxTempObj >= tempLimit) {
-        //relayState = false;
-        digitalWrite(RELAY_PIN, HIGH);
-        digitalWrite(LED, LOW);
-        //debug.infof("Rele Apagado");
-      } else if (mlxTempObj <= tempLimit - 5.00) {
-        //relayState = true;
-        digitalWrite(RELAY_PIN, LOW);
-        digitalWrite(LED, HIGH);
-        //debug.infof("Rele Prendido");
-        //debug.infof(tempLimit);
+        relayCutByTemp = true;
+      } else if (relayCutByTemp && mlxTempObj <= tempLimit - RELAY_VENTANA) {
+        relayCutByTemp = false;
       }
+    } else {
+      relayCutByTemp = false;
     }
+
+    bool shouldBeOn = relayRequested && !relayLocked && tempLimitConfigured && criticalTempLimitConfigured && !relayCutByTemp;
+    setRelayOutput(shouldBeOn);
 }
 void releUpdateDesbloqueo(){
-  if (ahtTemp1 >= criticalTempLimit && criticalTempLimitConfigured) {
+  // Bloquea el relé si se pasa el límite crítico de AHT10 y lo libera al bajar 5°C
+  if (criticalTempLimitConfigured && ahtTemp1 >= criticalTempLimit) {
     relayLocked = true;
-    relayState = false;
-    digitalWrite(RELAY_PIN, HIGH);
-    digitalWrite(LED, LOW);
+    relayCutByTemp = false;
+    setRelayOutput(false);
     //debug.infof("Limite critico alcanzado. Rele apagado definitivamente.");
+  } else if (relayLocked && criticalTempLimitConfigured && ahtTemp1 <= criticalTempLimit - RELAY_VENTANA) {
+    relayLocked = false;
   }
 }
 bool leerDHT(DHT &dht, float &dhtTemp, float &dhtHum, const char *ubicacion="interno") {
@@ -303,8 +317,8 @@ void sensorTask(void *pvParameters) {
     lecturas++;
     lecturaAnterior=tiempoLectura;
     tiempoLectura=millis();
-    releUpdate();
     releUpdateDesbloqueo();
+    releUpdate();
     //debug.infof("tiempo de sensado: %s  Delta: %lu,  lecturas totales: %lu",tiempoFormato ,tiempoLectura-lecturaAnterior,lecturas );
     //tiempoFormato = formatoTiempo(tiempo);
     //tiempo += 1; 
@@ -351,10 +365,24 @@ void webServerTask(void *pvParameters) {
                 jsonResponse += "\"dhtHum2\": \"" + formatFloat(dhtHum2) + "\",";
                 jsonResponse += "\"mlxTempObj\": \"" + formatFloat(mlxTempObj) + "\",";
                 jsonResponse += "\"mlxTempAmb\": \"" + formatFloat(mlxTempAmb) + "\",";
+                String relayMsg;
+                if (!relayRequested) {
+                  relayMsg = "Rele apagado hasta que el usuario lo encienda.";
+                } else if (relayLocked) {
+                  relayMsg = "Rele bloqueado debido a limite critico de temperatura.";
+                } else if (!tempLimitConfigured || !criticalTempLimitConfigured) {
+                  relayMsg = "Rele deshabilitado hasta que ambos limites sean configurados.";
+                } else if (relayCutByTemp) {
+                  relayMsg = "Rele apagado por limite de temperatura (MLX).";
+                } else if (relayState) {
+                  relayMsg = "Rele encendido";
+                } else {
+                  relayMsg = "Rele solicitado pero apagado hasta que baje la temperatura.";
+                }
+
                 jsonResponse += "\"relayState\": " + String(relayState ? "true" : "false") + ",";
-                jsonResponse += "\"relayMessage\": \"" + String(relayLocked ? "Rele bloqueado debido a limite critico de temperatura." :
-                                   (!tempLimitConfigured || !criticalTempLimitConfigured ? "Rele deshabilitado hasta que ambos limites sean configurados." :
-                                   (relayState ? "Rele encendido" : "Encendido del rele habilitado."))) + "\"";
+                jsonResponse += "\"relayRequested\": " + String(relayRequested ? "true" : "false") + ",";
+                jsonResponse += "\"relayMessage\": \"" + relayMsg + "\"";
                 jsonResponse += "}";
                 client.print(jsonResponse);
                 break;
@@ -362,11 +390,8 @@ void webServerTask(void *pvParameters) {
               //Solicitud a /toggleRelay → alterna el estado del relé
               if (header.indexOf("GET /toggleRelay") >= 0) {
                 if (!relayLocked && tempLimitConfigured && criticalTempLimitConfigured) {
-                  relayState = !relayState;
-                  digitalWrite(RELAY_PIN, relayState ? LOW : HIGH);
-                  digitalWrite(LED, relayState ? HIGH : LOW);
-                  
-                  periodo=relayState ? SENSOR_INTERVAL_MS_HIGH : SENSOR_INTERVAL_MS_LOW;
+                  relayRequested = !relayRequested;
+                  releUpdate();
                 }
                 client.println("HTTP/1.1 200 OK");
                 client.println("Connection: close");
@@ -492,7 +517,7 @@ void configurar_LED(){
   pinMode(LED, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(LED, LOW);
-  digitalWrite(RELAY_PIN, HIGH);
+  digitalWrite(RELAY_PIN, LOW);   // HIGH activa el relé; arrancar apagado
   delay(1000);
 }
 void setup() {
@@ -501,6 +526,11 @@ void setup() {
   wifi_setup();
   sensor_setup();
   configurar_LED();
+  // Arranque seguro: rele apagado hasta que el usuario lo pida
+  relayRequested = false;
+  relayCutByTemp = false;
+  relayLocked = false;
+  setRelayOutput(false);
   xTaskCreatePinnedToCore(sensorTask, "Sensor Task", 10000, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(webServerTask, "Web Server Task", 10000, NULL, 1, NULL, 1);
 
