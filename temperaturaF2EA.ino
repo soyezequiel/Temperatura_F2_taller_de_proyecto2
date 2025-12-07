@@ -37,6 +37,8 @@
 // ===============================================================
 const char* ssid     = "electricidad";
 const char* password = "medianoche extinto carreras asado hoja integral";
+// const char* ssid     = "tp2";
+// const char* password = "temperatura";
 WiFiServer server(80);
 String header;
 
