@@ -365,6 +365,10 @@ void webServerTask(void *pvParameters) {
                 jsonResponse += "\"dhtHum2\": \"" + formatFloat(dhtHum2) + "\",";
                 jsonResponse += "\"mlxTempObj\": \"" + formatFloat(mlxTempObj) + "\",";
                 jsonResponse += "\"mlxTempAmb\": \"" + formatFloat(mlxTempAmb) + "\",";
+                jsonResponse += "\"tempLimitConfigured\": " + String(tempLimitConfigured ? "true" : "false") + ",";
+                jsonResponse += "\"criticalTempLimitConfigured\": " + String(criticalTempLimitConfigured ? "true" : "false") + ",";
+                jsonResponse += "\"tempLimit\": \"" + formatFloat(tempLimit) + "\",";
+                jsonResponse += "\"criticalTempLimit\": \"" + formatFloat(criticalTempLimit) + "\",";
                 String relayMsg;
                 if (!relayRequested) {
                   relayMsg = "Rele apagado hasta que el usuario lo encienda.";

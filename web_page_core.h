@@ -13,6 +13,8 @@ const char index_head[] PROGMEM = R"HTML(
   <style>
     body {font-family: Arial; text-align: center;}
     button {margin:6px; padding:8px 14px;}
+    button:disabled {opacity: 0.6; cursor: not-allowed;}
+    .status {min-height: 1.2em;}
   </style>
 </head>
 <body>
@@ -24,18 +26,19 @@ const char index_head[] PROGMEM = R"HTML(
     <input type='number' id='setLimitInput' min='0' max='90' step='0.01' placeholder='0.00 - 90.00 °C' required>
     <input type='submit' value='Actualizar Límite'>
   </form>
-  <p id='tempLimitMessage' style='color: red;'></p>
+  <p id='tempLimitMessage' class='status'></p>
 
   <p>Temperatura crítica (AHT10): <span id="criticalTempLimitDisplay">No configurado</span></p>
   <form id='setCriticalLimitForm'>
     <input type='number' id='setCriticalLimitInput' min='0' max='45' step='0.01' placeholder='0.00 - 45.00 °C' required>
     <input type='submit' value='Actualizar Límite Crítico'>
   </form>
-  <p id='criticalTempLimitMessage' style='color: red;'></p>
+  <p id='criticalTempLimitMessage' class='status'></p>
 
   <h2>Control del Relé</h2>
   <p id='relayMessage'>Cargando estado...</p>
-  <button id='relayButton' onclick='toggleRelay()'>Encender Rele</button>
+  <button id='relayButton' onclick='toggleRelay()' disabled>Encender Rele</button>
+  <p id='relayActionFeedback' class='status'></p>
 
   <p>Tiempo: <span id='time'>--</span> </p>
   <p>delta: <span id='delta'>--</span> </p>
@@ -46,6 +49,7 @@ const char index_head[] PROGMEM = R"HTML(
   <p>DHT11 Interno: <span id='dhtTemp2'>--°C</span> / <span id='dhtHum2'>--%</span></p>
   <p>DHT11 Externo: <span id='dhtTemp1'>--°C</span> / <span id='dhtHum1'>--%</span></p>
   <button onclick='exportCSV()'>Exportar CSV</button>
+  <p id='exportMessage' class='status'></p>
 
   <!--CHART_PLACEHOLDER-->
 )HTML";
@@ -55,6 +59,27 @@ const char index_tail[] PROGMEM = R"HTML(
   // ===== Utilidades genéricas =====
   function setText(id, txt) { var el = document.getElementById(id); if (el) el.innerHTML = txt; }
   function n(x){ var v = parseFloat(x); return isNaN(v) ? null : v; }
+  function setStatus(id, msg, isError){
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.color = isError ? 'red' : '#0a7d2a';
+  }
+
+  function formatTiempo(t){
+    if (!t) return '--';
+    return String(t); // esperado hh:mm:ss.mmm
+  }
+
+  function formatMsReadable(msString){
+    var ms = parseInt(msString, 10);
+    if (isNaN(ms)) return '--';
+    if (ms >= 1000) {
+      var seconds = (ms/1000).toFixed(ms >= 10000 ? 0 : 2);
+      return seconds + ' s';
+    }
+    return ms + ' ms';
+  }
 
   // ===== AJAX helpers =====
   function callEndpoint(url, cb) {
@@ -68,7 +93,15 @@ const char index_tail[] PROGMEM = R"HTML(
 
   // ===== Estado/acciones UI =====
   function toggleRelay() {
-    callEndpoint('/toggleRelay', function(){ updateSensorData(); });
+    if (!relayConfigReady) {
+      setStatus('relayActionFeedback','Configura primero ambos limites para habilitar el rele.', true);
+      return;
+    }
+    setStatus('relayActionFeedback','Enviando solicitud...', false);
+    callEndpoint('/toggleRelay', function(){
+      setStatus('relayActionFeedback','Solicitud enviada.', false);
+      updateSensorData();
+    });
   }
 
   function bindForms() {
@@ -76,10 +109,11 @@ const char index_tail[] PROGMEM = R"HTML(
     if (f1) f1.addEventListener('submit', function (e) {
       e.preventDefault();
       var value = parseFloat(document.getElementById('setLimitInput').value);
-      if (isNaN(value) || value < 0 || value > 90) { setText('tempLimitMessage', 'El valor debe estar entre 0 y 90°C.'); return; }
+      if (isNaN(value) || value < 0 || value > 90) { setStatus('tempLimitMessage', 'El valor debe estar entre 0 y 90°C.', true); return; }
+      setStatus('tempLimitMessage','Enviando limite...', false);
       callEndpoint('/setlimit/?temp=' + value.toFixed(2), function () {
-        setText('tempLimitMessage', '');
-        setText('tempLimitDisplay', value.toFixed(2) + '°C');
+        setStatus('tempLimitMessage', 'Limite actualizado a ' + value.toFixed(2) + '°C.', false);
+        setText('tempLimitDisplay', value.toFixed(2) + '奧C');
         updateSensorData();
       });
     });
@@ -88,10 +122,11 @@ const char index_tail[] PROGMEM = R"HTML(
     if (f2) f2.addEventListener('submit', function (e) {
       e.preventDefault();
       var value = parseFloat(document.getElementById('setCriticalLimitInput').value);
-      if (isNaN(value) || value < 0 || value > 45) { setText('criticalTempLimitMessage', 'El valor debe estar entre 0 y 45°C.'); return; }
+      if (isNaN(value) || value < 0 || value > 45) { setStatus('criticalTempLimitMessage', 'El valor debe estar entre 0 y 45°C.', true); return; }
+      setStatus('criticalTempLimitMessage','Enviando limite critico...', false);
       callEndpoint('/setcriticallimit/?temp=' + value.toFixed(2), function () {
-        setText('criticalTempLimitMessage', '');
-        setText('criticalTempLimitDisplay', value.toFixed(2) + '°C');
+        setStatus('criticalTempLimitMessage', 'Limite critico actualizado a ' + value.toFixed(2) + '°C.', false);
+        setText('criticalTempLimitDisplay', value.toFixed(2) + '奧C');
         updateSensorData();
       });
     });
@@ -99,6 +134,7 @@ const char index_tail[] PROGMEM = R"HTML(
 
   // ===== Poll de sensores (con candado para no solapar requests) =====
   let enVuelo = false;
+  let relayConfigReady = null;
 
   function updateSensorData() {
     if (enVuelo) return;
@@ -120,9 +156,21 @@ const char index_tail[] PROGMEM = R"HTML(
             setText('dhtTemp1', d.dhtTemp1 + '°C'); setText('dhtHum1',  d.dhtHum1  + '%');
             setText('dhtTemp2', d.dhtTemp2 + '°C'); setText('dhtHum2',  d.dhtHum2  + '%');
             setText('mlxTempObj', d.mlxTempObj + '°C'); setText('mlxTempAmb', d.mlxTempAmb + '°C');
+            setText('tempLimitDisplay', d.tempLimitConfigured ? d.tempLimit + '°C' : 'No configurado');
+            setText('criticalTempLimitDisplay', d.criticalTempLimitConfigured ? d.criticalTempLimit + '°C' : 'No configurado');
             setText('relayMessage', d.relayMessage);
-            setText('relayButton', d.relayRequested ? 'Apagar Rele' : 'Encender Rele');
-            setText('time', d.tiempo);
+            var btn = document.getElementById('relayButton');
+            var nextRelayReady = !!(d.tempLimitConfigured && d.criticalTempLimitConfigured);
+            if (btn) {
+              btn.disabled = !nextRelayReady;
+              btn.textContent = d.relayRequested ? 'Apagar Rele' : 'Encender Rele';
+            }
+            if (relayConfigReady !== nextRelayReady) {
+              var relayMsg = nextRelayReady ? 'Rele habilitado.' : 'Configura ambos limites para habilitar el rele.';
+              setStatus('relayActionFeedback', relayMsg, !nextRelayReady);
+            }
+            relayConfigReady = nextRelayReady;
+            setText('time', formatTiempo(d.tiempo));
 
             csvPush(d);
             if (window.chartUpdate) window.chartUpdate(d);
@@ -178,7 +226,7 @@ const char index_tail[] PROGMEM = R"HTML(
     const delta = diferenciaTiempos(lastCsvTime, d.tiempoLectura);
     // console.log(delta);
     
-    setText('delta', delta);
+    setText('delta', formatMsReadable(delta));
     lastCsvTime = d.tiempoLectura;
     lecturas++;
     // console.log(lecturas);
@@ -201,6 +249,7 @@ const char index_tail[] PROGMEM = R"HTML(
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setStatus('exportMessage','CSV exportado.', false);
   }
 </script>
 </body>
