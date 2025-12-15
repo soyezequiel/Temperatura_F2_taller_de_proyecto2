@@ -1,0 +1,1834 @@
+﻿* UNLP / Facultad de Informática 
+
+* Materia: Taller de Proyecto II
+
+* Profesor: Fernando G. Tinetti
+
+________________
+
+
+Datos del proyecto
+   * Título del proyecto: Arreglo y mejora del sistema de medición y control de transferencia de calor con ESP32
+
+   * Objetivo general: Arreglar y mejorar el sistema de medición de temperaturas internas/externas y control de una fuente de calor
+
+   * Integrantes del grupo:
+
+      * Ezequiel Rodrigo Alcayaga – 0697/3
+
+      * Rodriguez Mantilla Alexis Benjamin– 00894/6
+
+________________
+
+
+         * Período de registro: Septiembre– ¿Diciembre? 2025)
+
+         * Formato: Entradas diarias/semanales con objetivos, conexiones, código, resultados y conclusiones.
+
+         * Observaciones iniciales: (ejemplo: esta bitácora documenta de manera cronológica el desarrollo del proyecto, incorporando mejoras a medida que se avanza y corrigiendo errores de las primeras pruebas según indicaciones del docente.)
+
+________________
+
+
+Fecha: 01/09/2025
+Título: Reunión con el profesor — Lineamientos iniciales del proyecto heredado
+Autores: Ezequiel Alcayaga, Rodriguez Mantilla Alexis
+Referencia: Primera definición de requerimientos
+Objetivo
+Dejar asentadas las decisiones técnicas iniciales y el protocolo de documentación.
+Decisiones y requerimientos
+            * Eliminar watchdog del proyecto heredado.
+            * Eliminar librerías de graficado del ESP32
+            * Agregar almacenamiento en microSD (con adaptador correspondiente) y guardar datos en CSV.
+            * Operación 100% offline: sin Wi-Fi/Bluetooth/Ethernet u otra red.
+            * Iniciar bitácora formal: no se modifican entradas previas; ante cambios, se añade una nueva entrada que referencia la anterior.
+
+Alcance técnico inicial
+               * CSV: definir encabezados, separador, codificación (ej: UTF-8) y política de tamaño por archivo.
+microSD: seleccionar hardware (tensión 3.3 V, interfaz y adaptador), librería de FS (p. ej., FatFs), manejo de errores.
+               * Remoción de graficado: identificar dependencias y código muerto asociado.
+               * Watchdog: localizar implementación (HW/SW) y plan de desactivación segura.
+
+Tareas próximas (To-Do)
+                  * Inventariar dónde está el watchdog y documentar su desactivación.
+                  * Listar y remover librerías de graficado y dependencias relacionadas.
+                  * Diseñar esquema CSV (campos, separador, unidades, ejemplo de fila).
+                  * Elegir microSD + adaptador y librería de filesystem; crear prueba de escritura/lectura.
+                  * Implementar rotación de archivos.
+Criterios de aceptación (provisorios)
+                  * El binario compila y corre sin watchdog y sin librerías de graficado.
+
+                  * El sistema genera CSV válidos en la microSD bajo condiciones nominales y de error (prueba con retiro inesperado de energía).
+
+Pendientes/Notas
+                     * Precisar si el watchdog es únicamente de software o también HW del microcontrolador.
+                     * Definir tamaño/velocidad de la microSD.
+                     * Consultar al profesor si esta entrada es lo que espera para la bitácora. 
+
+
+________________
+
+
+Fecha: 04/09/2025 - Profesor
+A) Sobre:
+“Operación 100% offline: sin Wi-Fi/Bluetooth/Ethernet u otra red.”
+En realidad no sería sin interconexión inalámbrica de ningún tipo, porque eso aislaría demasiado a los usuarios del sistema, no permitiría mucha interacción (quedaría la interconexión cableada USB, pero es demasiado limitada en muchos aspectos). La operación del sistema sería “offline” en el sentido de “desconectado de internet”. El usuario del sistema sí debería tener acceso Wi-Fi con una interfaz “tipo web”-HTTP para interactuar con el sistema, es decir para hacer los experimentos, definir temperaturas, transferir los datos de los experimentos a otro sistema, etc. La desconexión de internet determina en principio dos cosas:
+                     1. Por un lado “formalizaría” el hecho de que el sistema es una “herramienta” que se utiliza “in situ”, dado que en la instancia final de producto se pondrían físicamente los materiales a evaluar experimentando lo relativo a su transferencia térmica.  
+                     2. Dejaría al sistema aislado sobre todo de la gran mayoría de los problemas de seguridad, operación y privacidad que tienen todos los sistemas computacionales conectados a internet. 
+
+
+B) Sobre:
+“Consultar al profesor si esta entrada es lo que espera para la bitácora. “
+Con que queden registradas las actividades y las cosas pendientes, está bien, y este es un formato que me parece bien si a uds. también les es conveniente. De mi lado, sugiero evitar los “comentarios” de los gdocs (como los que están ahora de Ezequiel), porque la propia bitácora es para todos los comentarios y porque el manejo de comentarios por parte de gdoc quita espacio al propio gdoc, que donde está lo importante.
+C) Sobre: 
+“Tareas próximas (To-Do)”
+Entiendo que son tareas que pueden ser útiles a nivel de desarrollo técnico, pero en realidad lo primero, de “corto plazo”, que deben hacer es definir el contenido para la entrega del Plan de Proyecto que es el que si Dios quiere revisaríamos en la clase del lunes 8/9. Todo lo demás es factible y posiblemente necesario, pero ahora mismo mi recomendación es que miren/completen lo que van a entregar para que podamos revisarlo.
+D) Estaba pensando que se podría pensar algo con microSD con los módulos ESP32-CAM (aunque sin la cámara porque no tiene sentido la cámara para este proyecto), que tiene integrado el módulo de microSD, tal como se ve en la foto:
+
+
+
+
+  
+
+
+
+________________
+
+
+
+
+Fecha: 05/09/2025
+Título: Lectura de bitácora del proyecto heredado y debate sobre Plan de Proyecto
+
+
+ Referencia: Seguimiento de entrada del 01/09/2025
+Objetivo
+Registrar el análisis de la bitácora heredada y la discusión sobre qué incluir en nuestro Plan de Proyecto.
+Lo realizado
+El jueves pasado leímos completamente la bitácora del grupo anterior del sistema de transferencia de calor. Con esa información armamos un borrador de Plan de Proyecto que incluye:
+                     * Lo que ya funciona: Sensores AHT10 y MLX90614 andando bien, control con relé, interfaz web con gráficos, y experimentos hasta 50°C realizados.
+
+                     * El problema heredado: El ESP32 se reinicia cuando usan dos sensores DHT11 juntos por el Watchdog Timer que se activa.
+
+                     * Lo que ya probaron: Intentaron muchas cosas (más delays, librerías no bloqueantes, cambiar tareas de core) pero nada funcionó definitivamente.
+
+                     * Nuestras ideas para solucionarlo: Propusimos cambiar a más sensores AHT10, usar librerías no bloqueantes bien implementadas, o ajustar el watchdog como última opción.
+
+Debate del grupo
+Debatimos si meter todo este análisis del proyecto anterior en el Plan de Proyecto que armó Ezequiel. No llegamos a un acuerdo: por un lado muestra que entendemos bien lo que recibimos, pero por otro puede ser demasiada información histórica para un plan que debería enfocarse en lo que vamos a hacer nosotros.
+
+
+Decisión pendiente
+Vamos a consultar al profesor Tinetti el lunes 08/09 para ver si prefiere que incluyamos este análisis en el Plan de Proyecto o si lo mantenemos separado.
+Próximos pasos
+                        * Mostrar ambas versiones al profesor el lunes
+                        * Ajustar según lo que nos indique
+                        * Continuar con las tareas técnicas una vez definido cómo documentar
+________________
+
+
+
+
+
+
+Fecha: 09/09/2025
+Título: Almacenamiento (memoria interna / microSD), herramientas de graficado y pedido sobre ESP del grupo anterior
+
+Objetivo
+ Registrar lo indicado sobre uso de memoria interna vs. microSD, herramientas de graficado esquemático y averiguación sobre el ESP en especifico que usó el grupo anterior.
+Lo tratado / decisiones
+                        * microSD (opcional): Se puede omitir si la memoria interna alcanza. Ver límite de almacenamiento interno.
+
+                        * Si se usa microSD, evaluar tiempos de transferencia y posibles errores durante la grabación.
+
+                        * Alternativa: transferir gradualmente los datos desde la memoria interna a la externa para liberar espacio; la memoria interna es más rápida para el registro.
+
+                        * Posibilidad de usar frecuencia dinámica (para optimizar espacio), especialmente si se trabaja con memoria interna.
+
+                        * Herramientas de graficado esquemático: existen opciones pagas; se mencionó draw.io. Usar software con licencia (evitar piratería). Se intentará con Proteus si corresponde y es legal; si no, pasar a una herramienta gratuita.
+
+                        * Pedido del profesor: averiguar qué ESP usó el grupo anterior y enviarlo por “Ideas”.
+
+Pendientes
+                           * Verificar capacidad y límites de la memoria interna.
+
+                           * Decidir si se usa microSD; en ese caso medir transferencias y manejo de errores.
+
+                           * Definir y probar transferencia progresiva de interna → externa.
+
+                           * Definir criterio de frecuencia dinámica (si aplica).
+
+                           * Confirmar herramienta de graficado a utilizar y licenciamiento (revisar situación de Proteus / alternativa gratuita).
+
+                           * Investigar el modelo de ESP usado por el grupo anterior y enviar la información por “Ideas”.
+Imagen del pizarrón dibujado por el profesor
+  
+
+
+
+________________
+
+
+Fecha: 09/09/2025
+Título: Recepción de elementos entregados por el profesor
+Evidencia: fotos adjuntas (balde con caja IP65 y unidad de alimentación con cable)
+Objetivo
+Dejar registro de la entrega de materiales y su estado a la recepción
+
+
+
+
+
+
+.
+Detalle de lo recibido
+                              1. Balde plástico (≈20 L) color naranja con caja estanca IP65 marca GENROD atornillada en el lateral (4 tornillos).
+
+                                 * Observaciones visuales: la caja está cerrada; se ve un mazo de cables saliendo por un lateral. El balde presenta uso previo. No se hicieron pruebas eléctricas.
+
+                                    2. Unidad de alimentación en gabinete metálico tipo PSU (carcasa con etiqueta del proyecto) + cable de red.
+
+                                       * Observaciones visuales: mazo de cables multicolor con conectores; se ve un conector tipo barril (DC).
+
+Estado a la recepción
+                                          * Sin pruebas funcionales realizadas.
+
+                                          * Solo inspección visual: sin golpes evidentes en la caja IP65 ni en la carcasa metálica.
+
+                                          * Cables sin cortes visibles.
+
+Próximos pasos
+                                             * Abrir la caja IP65 y documentar su contenido (fotos + listado).
+
+                                             * Inventariar: asignar código a cada elemento y subir a la carpeta del proyecto.
+
+                                             * En la PSU: verificar continuidad de tierra, revisar polaridades y medir tensiones en vacío (3.3 V / 5 V / 12 V si aplica).
+
+                                             * No energizar hasta completar la revisió
+                                             * n de seguridad eléctrica.
+
+                                             * Registrar resultados de las mediciones y agregar a la bitácora.
+
+Riesgos y precauciones
+                                                * Tensión de red: usar aislamiento, disyuntor y multímetro en la primera prueba.
+
+                                                * Verificar entrada de cables de la caja IP65 antes de ensayos térmicos.
+
+Imagenes de lo recibido 
+  
+  
+
+
+
+
+
+
+
+________________
+
+
+Fecha: 09/09/2025
+Título: Intercambio de mensajes por Ideas
+Grupo: 
+Buenas días profesor, el lunes nos pidió que le avisarámos qué modelo exacto de esp32 se usó en el proyecto anterior, el proyecto utilizó un NodeMCU ESP32 como placa base
+Rta. Profesor:
+Estimados, recibido. Vi la bitácora actualizada y está muy bien respecto de lo que conversamos el lunes.
+Respecto al modelo de ESP32: la descripción no necesariamente describe el modelo exacto, porque suelen describirse de muchas maneras y hay muchos modelos de ESP32. Les pediría que:
+1.- Si en el informe hay una foto del modelo de ESP32, la copien en la bitácora
+2.- Pongan en la bitácora el esquemático de conexiones que está en el modelo y con el que podemos identificar sin ambigüedades el ESP32 
+
+
+________________
+
+Fecha: 10/09/2025
+Título: Identificación del modelo de ESP32 y registro del esquemático (pedido del profesor)
+Evidencia: fotos adjuntas (placa/ESP32 y esquemáticos)
+  
+  
+
+Objetivo
+Cumplir con la indicación del profesor:
+                                                   1. Copiar en la bitácora la foto del modelo de ESP32 usado por el grupo anterior.
+
+                                                   2. Incluir el esquemático de conexiones que permita identificar sin ambigüedades el ESP32.
+
+Lo registrado
+                                                      * Foto del ESP32: se observa una placa de desarrollo con módulo ESP32-WROOM-32 (en una imagen se lee “ESP32-VROOM-32”, asumimos que es WROOM-32). 
+
+                                                      * Esquemático: adjuntamos el diagrama donde se conectan:
+
+                                                         * AHT10 (interno y externo) por I²C.
+
+                                                         * Sensor infrarrojo (interior; bus I²C).
+
+                                                         * DHT11 (interior y exterior) en GPIOs digitales.
+
+                                                         * Relé para el calentador / resistencias cerámicas (alimentación a 12 V).
+
+                                                         * GND común; sensores a 3,3 V; carga a 12 V.
+
+Con estas dos piezas (foto + esquema) queda identificada la familia del módulo (ESP32-WROOM-32 DevKit).
+
+________________
+
+
+Fecha: 11/09/2025 
+ Autor: Profesor
+Título: Foto del modelo de ESP32 utilizado en el proyecto anterior:
+En la pág. 24 del informe encontré la foto del modelo exacto utilizado, la dejo acá para que nos quede de referencia y en mi caso buscar este modelo para entregarles en mano si Dios quiere el lunes próximo.
+  
+
+Acá están los que yo tengo, uno de ellos podría ser este modelo (hay que verificar el “pinout”):
+  
+
+
+
+
+
+
+
+Fecha: 15/09/2025
+Título: Apertura de la caja estanca y hallazgo de conectores de alimentación
+Referencia: Entrada “Apertura de la caja estanca del equipo heredado y relevamiento de cableado” (15/09/2025)
+Objetivo
+Continuar con la revisión interna de la caja estanca blanca (IP65), identificar conexiones y descubrir el sistema de alimentación.
+Lo realizado
+                                                            * Se abrió la caja y se revisaron nuevamente las conexiones internas.
+
+                                                            * Se observó que los sensores no están conectados a la placa.
+
+                                                            * Durante la inspección se descubrió la presencia de conectores de alimentación rotulados:
+
+                                                               * 3.3 V
+
+                                                               * 12 V
+
+                                                                  * Al revisar los cables externos, se comprobó que los conectores tipo barril (DC) encajan directamente en esas entradas ubicadas en la parte inferior de la caja plástica.
+
+Hallazgos
+                                                                     * El sistema de alimentación está diseñado para entrar desde el exterior de la caja mediante conectores DC.
+
+                                                                     * Los voltajes disponibles son 3.3 V (para sensores y lógica) y 12 V (para cargas como el calefactor).
+
+Evidencia
+                                                                        * Fotos adjuntas:
+
+                                                                           * Vista de los conectores rotulados “3.3 V” y “12 V”.
+  
+                                                                           * Cables con conectores DC correspondientes.
+  
+
+Próximos pasos
+                                                                              * Medir con multímetro los niveles de tensión en cada conector (3.3 V / 12 V).
+
+                                                                              * Confirmar la polaridad de cada conector DC.
+
+                                                                              * Documentar en esquema: conexión fuente PC → caja estanca → ESP32 y calefactor.
+
+
+
+Fecha: 15/09/2025
+Título: Revisión de sensores externos y sistema de paso de aire en el tacho
+Referencia: Entrada “Apertura de tacho” (15/09/2025)
+Objetivo
+Documentar la inspección de los sensores externos y el sistema interno de paso de aire del prototipo heredado.
+Lo realizado
+                                                                                 * Se observó que los sensores externos DHT11 y AHT10 están colocados en el aislante.
+
+                                                                                 * Se retiró la cara superior del aislante sin necesidad de desconectar los cables; los sensores quedaron colgando al lado del tacho, siempre conectados.
+
+                                                                                 * Se retiró parte del material aislante y se descubrió un sistema similar a una llave de paso.
+
+                                                                                 * Al levantar suavemente el tubo plástico conectado al fierro, se verificó que se puede desmontar el conjunto.
+
+                                                                                 * Se confirmó que este sistema no es para bloquear la tapa, sino que sirve para controlar la entrada de aire (abrir/cerrar paso).
+
+                                                                                 * Se comenzó a desarmar la manija del sistema de paso de aire para poder retirarlo completamente y así chequear:
+
+                                                                                    * Estado de los sensores internos.
+
+                                                                                    * Estado de las resistencias calefactoras.
+
+                                                                                    * Detalles constructivos del mecanismo.
+
+Evidencia
+                                                                                       * Fotos adjuntas:
+
+                                                                                          * Sensores externos DHT11 y AHT10 incrustados en el aislante.
+  
+                                                                                          * Sensores colgando después de retirar la cara superior.
+  
+
+
+
+                                                                                             * Vista interna del sistema de paso de aire (caño plástico).
+
+  
+  
+
+                                                                                                * Proceso de desmontaje de la manija de la llave de paso.
+  
+Próximos pasos
+                                                                                                   * Extraer por completo el sistema de paso de aire.
+
+                                                                                                   * Documentar con fotos la ubicación exacta de los sensores internos y resistencias calefactoras.
+
+                                                                                                   * Verificar continuidad eléctrica de los sensores y resistencias.
+
+                                                                                                   * Actualizar el esquema del sistema con este hallazgo.
+
+Bitácora – Registro de Elementos Encontrados
+ Fecha: 15/09/2025
+En esta ocasión comenzamos a registrar los elementos que fuimos encontrando dentro del sistema heredado. Para facilitar su identificación, decidimos asignar un código a cada uno de los componentes que vayamos documentando.
+Código E1: Parte interna de telgopor moldeado, con cavidad central circular.
+  
+Código E2: Fuente de alimentación de PC adaptada al proyecto, con etiqueta de la Facultad de Informática.
+  
+Código E3: Módulo ESP32, placa principal del sistema.
+  
+Código E4: Discos de telgopor circulares, posiblemente usados como aislante adicional.
+
+Código E5: Tapa plástica circular del tacho.
+  
+Código E6: Válvula plástica con caño metálico roscado y manija roja.
+  
+Código E7: Soportes de madera extraídos del interior del tacho.
+  
+ Código E8: Otro disco de telgopor con perforación central.
+  
+ Código E9: Disco metálico con perforación central, es la tapa del contenedor de lata que se encuentra debajo de los anteriores aislantes
+
+
+  
+
+Código E10: Recipiente metálico de pintura reutilizado, adaptado como parte del sistema interno. Presenta cuatro bulones de fijación en su base.
+
+Código E11: Sensor DHT11 colocado en el interior del aislante, conectado mediante cables planos.
+  
+Código E12: Bloque de material aislante (espuma/poliestireno expandido) que rodean el sistema, conformando la cámara térmica del contenedor. Se adaptaron con cortes para alojar sensores y el recipiente metálico..
+  
+
+Entrada de Bitácora — Continuación del desarme
+                                                                                                      * Se continúa con el proceso de desarme del sistema.
+    
+                                                                                                      * En las imágenes se identifica el sensor MLX90614 (aunque en la captura aparece algo borroso, se supone que corresponde a ese sensor).
+    
+                                                                                                      * Se aclara que, para retirar la manija del fierro, no es necesario destornillar el tornillo.
+ Basta con estirarlo y sacarlo como si fuera un clavo, ya que no está roscado por dentro.
+
+                                                                                                      * Luego de revisar esta parte, se decide re-ensamblar todo el sistema para realizar nuevas mediciones y continuar con la documentación.
+
+
+ Entrada de Bitácora — Reensamblado parcial
+                                                                                                         * Se trabaja en la parte del caño plástico (sector blanco con aislante).
+
+                                                                                                         * Durante el reensamblado, se determinó que la orientación correcta es con el extremo con teflon hacia arriba, ya que de esa manera encaja mejor en el sistema.
+  
+                                                                                                         * Se aclara que antes del desarme no se había registrado con certeza el dato anterior, pero ahora se documenta este detalle para futuras referencias.
+
+
+
+
+
+
+
+ Bitácora – 15/09/2025
+Medición de la fuente de alimentación
+Se comienza a realizar la verificación de la fuente.
+Decidimos probar la entrada USB que trae la misma, aunque no está previsto su uso en el proyecto.
+                                                                                                            * Se configuró el tester en voltaje continuo, rango hasta 200 V.
+
+                                                                                                            * Se conectaron las puntas del tester: positivo al pin de 5 V del USB y negativo a tierra.
+
+                                                                                                            * Al momento de hacer contacto, la fuente se apagó. Se sospecha que se produjo un cortocircuito.
+
+                                                                                                            * Se desenchufó y volvió a enchufar la fuente. Luego funcionó nuevamente sin problemas.
+
+                                                                                                            * Antes de desenchufar, se probó la perilla de apagado, pero no respondía correctamente (no ascendía al estado de encendido).
+
+Conclusión: por precaución, no se realizarán más pruebas en la salida USB de la fuente hasta definir si realmente se utilizará en el proyecto.
+
+
+
+
+ Entrada de Bitácora — Medición de la fuente
+Se realizaron mediciones de las salidas de la fuente utilizando el tester en modo voltaje DC.
+Resultados obtenidos:
+                                                                                                               * Salida 3.3 V → 3.3 V
+
+                                                                                                               * Salida 5 V → 5.1 V
+
+                                                                                                               * Salida 12 V → 12.2 V
+
+Se confirma que las tres salidas principales entregan voltajes correctos y estables.
+                                                                                                                  * Salida 3.3 V → 3.3 V
+  
+  
+
+                                                                                                                  * Salida 12 V → 12.2 V
+                                                                                                                  *   
+  
+
+                                                                                                                  * Salida 5 V → 5.1 V
+  
+
+  
+
+
+
+ Entrada de Bitácora — Análisis de la conexión de 12V y 3.3V
+Se analizó el recorrido de la entrada de 12V:
+                                                                                                                  * La línea de 12V va directamente hacia el relé.
+
+                                                                                                                  * Cuando el relé abre, la corriente pasa a un cable negro, que luego cambia a color rojo.
+
+                                                                                                                  * Este cable alimenta la resistencia cerámica y vuelve junto con otro cable rojo que hace de tierra hacia el conector de los 12V.
+
+Observación importante:
+Se detectó que no es recomendable utilizar colores distintos para cables con la misma función. En este circuito se encontraron mezclas:
+                                                                                                                     * Tierra y positivo con el mismo color.
+
+                                                                                                                     * Cambios de color en el recorrido (ejemplo: de rojo pasa a negro o amarillo).
+Esto puede generar confusión y no es una buena práctica. Sin embargo, no se modificará ya que excede los alcances de este proyecto.
+
+Además, en la placa perforada se verificó que:
+                                                                                                                        * Los pines en vertical  de la foto están interconectados por columnas.
+
+                                                                                                                        * En la foto adjunta se observa la entrada de 3.3V.
+
+                                                                                                                           * Los pines marcados en verde corresponden a tierra.
+
+                                                                                                                           * Los pines marcados en rosa corresponden a 3.3V.
+
+ Se adjunta imagen como referencia de las conexiones.
+  
+
+
+
+Bitácora – Proyecto Control de Temperatura
+ Fecha: 15 de septiembre de 2025
+Tema: Orientación del ESP32 en la placa
+Hoy confirmamos la orientación correcta del ESP32 en la placa perforada.
+Al principio teníamos la sospecha de que debía colocarse en cierto orden, ya que la caja tiene un orificio que parecía estar destinado a la entrada USB del microcontrolador.
+Para asegurarnos, revisamos el informe final del grupo anterior y allí encontramos una foto de referencia que confirma esta disposición.
+Imágenes adjuntas:
+                                                                                                                              * Foto de referencia del informe final
+  
+                                                                                                                              * Foto del montaje actual en la caja
+  
+
+
+
+
+Bitácora – Conexiones de Sensores y Relé
+  Fecha: 15 de septiembre de 2025
+Hoy realizamos la revisión de las conexiones de los sensores y del relé en el sistema.
+Para evitar confusiones se documentaron los pines de cada módulo y las etiquetas que se encuentran en los cables.
+De este diagrama
+  
+
+Relé
+                                                                                                                                 * Vcc → Etiqueta M: Vcc
+
+                                                                                                                                 * GND → Etiqueta N: GND
+
+                                                                                                                                 * IN → Etiqueta B: IN
+
+  
+  
+
+________________
+
+
+AHT10 Interno
+                                                                                                                                    * VIN (+) → Etiqueta A: +
+
+                                                                                                                                    * GND (-) → Etiqueta N: -
+
+                                                                                                                                    * SCL → Etiqueta R: SCL
+
+                                                                                                                                    * SDA → Etiqueta M: SDA
+
+  
+  
+
+________________
+
+
+AHT10 Externo
+                                                                                                                                       * VIN (+) → Etiqueta V: +
+
+                                                                                                                                       * GND (-) → Etiqueta A: -
+
+                                                                                                                                       * SCL → Etiqueta N: SCL
+
+                                                                                                                                       * SDA → Etiqueta Verde: SDA
+
+
+
+  
+  
+
+________________
+
+
+Sensor Infrarrojo
+                                                                                                                                          * VIN (+) → Etiqueta V: +
+
+                                                                                                                                          * GND (-) → Etiqueta B: -
+
+                                                                                                                                          * SCL → Etiqueta N: SCL
+
+                                                                                                                                          * SDA → Etiqueta Bv: SDA
+
+  
+  
+
+________________
+
+
+DHT11 Interno
+                                                                                                                                             * VCC (+) → Etiqueta A: +
+
+                                                                                                                                             * GND (-) → Etiqueta G: -
+
+                                                                                                                                             * DATOS → Etiqueta V: Datos
+
+  
+  
+
+________________
+
+
+DHT11 Externo
+                                                                                                                                                * VCC (+) → Etiqueta R: +
+
+                                                                                                                                                * GND (-) → Etiqueta N: -
+
+                                                                                                                                                * DATOS → Etiqueta M: Datos
+
+Adjuntar imágenes: 67 dth11 externo.jpg, 68 dth11 externo.jpg
+  
+  
+
+________________
+ Con esta documentación queda registrado de forma clara dónde se conecta cada sensor y qué etiqueta corresponde a cada pin.
+
+
+
+
+
+
+Bitácora – Prueba de Software y Configuración del ESP32
+ Fecha: 15 de septiembre de 2025
+Hoy se intentó ejecutar un software que permita verificar el funcionamiento del sistema.
+Probamos con el proyecto GATransferWi-Fi, con la idea de acceder desde la computadora localmente y realizar pruebas de conexión.
+                                                                                                                                                   1. Instalamos un paquete de soporte para ESP32 en el IDE de Arduino.
+
+                                                                                                                                                   2. Al principio no funcionaba y descubrimos que la causa era un cable USB que no transmitía datos. Reemplazamos por otro cable y funcionó.
+
+                                                                                                                                                   3. Se intentó compilar y subir el programa, pero nuevamente no respondió. Se sospecha que el problema era el paquete de compatibilidad instalado.
+
+Acciones tomadas:
+                                                                                                                                                      * Se borró el paquete y se probó de nuevo.
+
+                                                                                                                                                      * Finalmente, se optó por la medida más drástica: desinstalar completamente el Arduino IDE y reinstalarlo desde cero.
+
+                                                                                                                                                      * Desde la página oficial de Silicon Labs se descargó e instaló el driver CP210X Universal Windows Driver v11.4.0, necesario para que la PC detecte el chip del ESP32.
+
+Con esto logramos que el dispositivo aparezca correctamente en el puerto COM5, confirmando que el ESP32 estaba siendo reconocido.
+ Próximos pasos:
+                                                                                                                                                         * Instalar nuevamente el paquete actualizado de ESP32 en Arduino IDE.
+
+                                                                                                                                                         * Confirmar que el modelo específico sea detectado en el IDE.
+
+Finalmente, documentamos el procedimiento de escritura del firmware en el ESP32:
+Pasos para subir el código al ESP32:
+                                                                                                                                                            1. Conectá el ESP32 por USB.
+
+                                                                                                                                                            2. En el IDE de Arduino, hacé clic en Subir.
+
+                                                                                                                                                            3. Cuando aparezcan los mensajes “Connecting…..”:
+
+                                                                                                                                                               * Mantené apretado el botón BOOT (IO0).
+
+                                                                                                                                                               * Tocá y soltá el botón EN (Reset) una vez (sin soltar BOOT).
+
+                                                                                                                                                               * Esperá 1–2 segundos y soltá BOOT.
+
+                                                                                                                                                                  4. Si engancha, se verá el mensaje “Writing at 0x… (xx%)”.
+
+                                                                                                                                                                  5. Tip: si no engancha a la primera, repetir los pasos 2–3, ya que el timing puede ser sensible.
+
+
+
+
+________________
+
+
+Fecha: 18/09/2025 
+ Autor: Profesor
+Título: Evaluación del Plan de trabajo enviada el 16/9 - Respuesta/Completar pendiente al 18/9 (de hecho desde el 14/9 lo que corresponde a la entrega del Plan de Trabajo)
+Enviado por Ideas el 16/9
+===
+Estimados,
+En principio, la entrega estuvo incompleta, por favor completen la entrega de acuerdo al correo que les envié por Ideas el 16/9.
+Lo que sigue se refiere al .pdf enviado como entrega del Plan de Proyecto.
+Para la Introducción, pongan algo genérico respecto de lo que sería el producto final, del cual están mejorando el prototipo, de hecho. Pueden mirar lo que está en el informe final del proyecto que recibieron, si no se entiende pueden consultarme en clase.
+Tienen una inconsistencia en la sección Objetivos, copio de lo que entregaron:
+"almacenar datos en formato CSV en una microSD"
+"Generación de archivos CSV:
+- Opción 1: Memoria interna (rápida, limitada).
+- Opción 2: MicroSD, evaluando transferencias y manejo de errores.
+"
+Es decir: si el objetivo es almacenar en una SD no podría ser "una opción". Mi sugerencia es que dejen el objetivo como 
+"considerando algunas opciones específicas de almacenamiento y transmisión de los datos" etc.
+Está bien documentar las soluciones propuestas, aunque no fue requerido en el Plan de Proyecto, solo un comentario acerca de lo que pusieron como:
+"Más estables y precisos ? elimina el problema de raíz."
+En realidad, el problema que uds. tienen que analizar y resolver es el problema del reset por el WDT, tal como les comenté en clase. Sin dudas en este caso cambiar el sensor podría resolver el problema, pero como también les comenté en clase, el problema del WDT aparece en múltiples proyectos y todo indica que va a seguir apareciendo. Y sobre ese problema van a trabajar uds. Ya que estamos, estuve mirando algunas cosas con una IA y según la IA hay múltiples "fuentes" de reset por WDT, así que les diría que cuando empiecen a mirar esto una vez que reconstruyan y se familiaricen con el sistema. Si tienen consultas al respecto, me consultan en clase.
+Prof. Fernando G. Tinetti
+===
+
+
+________________
+
+
+Fecha: 19/09/2025 
+ Autor: Profesor
+Título: Respuesta/Completar pendiente al 18/9 (de hecho desde el 14/9 lo que corresponde a la entrega del Plan de Trabajo)
+Enviado por Ideas el 19/9
+===
+Estimados,
+Por favor completen la entrega del Plan de Proyecto y recuérdenme conversar algunos detalles del trabajo si Dios quiere en la clase del lunes.
+Prof. Fernando G. Tinetti
+===
+
+
+________________
+
+
+Bitácora – Revisión de versiones del proyecto y librerías necesarias
+Fecha: 22 de septiembre de 2025
+Hoy se revisó la evolución de las carpetas/repositorios del sistema heredado, confirmando el orden cronológico y el estado de cada versión:
+                                                                                                                                                                     1. heat-transfer → versión base del sistema completo.
+
+                                                                                                                                                                     2. heat-transfer-wifi → primera versión con interfaz web.
+
+                                                                                                                                                                     3. heat_transfer_wifi_grafica → versión con gráficas en Chart.js.
+
+                                                                                                                                                                     4. heat_transfer_wifi_grafica_2 → mejora con Plotly + exportación/importación CSV.
+
+                                                                                                                                                                     5. heat_transfer_wifi_grafica_3 → versión depurada, estable, usada para los experimentos finales.
+
+                                                                                                                                                                     6. heat_transfer_wifi_grafica_dht → intento de integrar los DHT11 a las gráficas y CSV, pero quedó con reinicios por problemas de watchdog.
+
+ Según la bitácora, la última versión estable y utilizada en los experimentos de diciembre 2024 fue heat_transfer_wifi_grafica_3.
+
+La carpeta heat_transfer_wifi_grafica_dht quedó solo como referencia para futuros grupos, ya que contiene errores.
+Además, se instalaron las librerías necesarias para los sensores utilizados:
+                                                                                                                                                                        * Adafruit_MLX90614 (sensor infrarrojo).
+
+                                                                                                                                                                        * Adafruit AHTX0 (sensor AHT10/AHT20).
+                                                                                                                                                                        *                                                                                                                                                                         * Adafruit DHT Sensor Library (sensor DHT11).
+
+                                                                                                                                                                        * Todas las dependencias adicionales que el propio Arduino IDE solicita al momento de instalar (como Adafruit BusIO, Adafruit Unified Sensor, etc.).
+
+ Pasos seguidos:
+                                                                                                                                                                           1. Abrir Arduino IDE.
+
+                                                                                                                                                                           2. Ir a: Programa > Incluir librería > Administrar bibliotecas…
+
+                                                                                                                                                                           3. En el buscador, escribir primero: Adafruit MLX90614 → instalar.
+
+                                                                                                                                                                           4. Luego, buscar: Adafruit AHTX0 → instalar.
+
+                                                                                                                                                                           5. Aceptar e instalar todas las dependencias sugeridas automáticamente por el IDE.
+
+
+Entrada de Bitácora – Conexión del ESP32 a la fuente vs. PC
+Hoy probamos alimentar el ESP32 directamente desde la fuente de 5 V por usb, pero notamos que en esa condición el microcontrolador no inicia correctamente.
+                                                                                                                                                                              * El LED de encendido del ESP32 sí se ilumina, lo que indica que llega tensión,
+
+                                                                                                                                                                              * pero el sistema no ejecuta el programa cargado ni muestra datos en la interfaz.
+
+En cambio, al conectar el ESP32 directamente por USB a la PC, el sistema funciona con normalidad y la interfaz web responde (lectura de sensores y control de relé).
+
+
+Hipótesis actual:
+Creemos que el algoritmo necesita establecer primero una comunicación serial vía USB con la PC para continuar la ejecución, o bien requiere intercambio de datos iniciales antes de habilitar el resto de la lógica.
+Se adjunta captura de la interfaz en funcionamiento para referencia:
+
+
+
+  
+
+
+
+Entrada de Bitácora – Problemas con cables y placa perforada
+Durante las pruebas detectamos que los cables se desconectan con mucha facilidad de los zócalos. Esto genera falsos contactos y dificulta el diagnóstico del sistema.
+
+
+ Recomendaciones:
+                                                                                                                                                                                 * Cambiar los cables actuales por nuevos jumpers que encajen con mayor firmeza en los zócalos, evitando que se suelten con pequeños movimientos.
+
+                                                                                                                                                                                 * Reemplazar la placa perforada por una más nueva y de mayor tamaño, ya que en la actual los cables están demasiado apretados.
+
+                                                                                                                                                                                 * Con una placa más amplia sería posible trabajar con mayor comodidad, permitiendo hacer modificaciones sin riesgo de desconectar accidentalmente otros cables.
+
+
+
+Entrada de Bitácora – Recomendaciones del profesor sobre ESP32 y distribución de pines
+
+
+El profesor nos indicó que debemos informar en la bitácora cuál es la distribución de pines (Pinout) del ESP32 que necesitamos, de manera que él pueda buscar alternativas.
+
+
+ Posibles escenarios discutidos:
+                                                                                                                                                                                    * En caso de que no se consiga un ESP32 que evite la combinación de botones (BOOT + EN) para cargar programas, se evaluó la opción de usar otro ESP32 con un pinout diferente y realizar conexiones externas (puentes). Sin embargo, esta alternativa resultaría poco práctica y desprolija, ya que todo quedaría colgado de forma manual.
+
+                                                                                                                                                                                    * Se mencionó la posibilidad de delegar carga a un ESP32 secundario (ESP32-SCAN), el cual podría encargarse de las tareas de HTTP y Wi-Fi, mientras que el ESP32 principal manejaría la lógica del proyecto. Se incluiría la lectura de la tarjeta microSD en este segundo módulo. Esto, en teoría, ayudaría con el problema del Watchdog Timer (WDT) al aliviar el procesamiento del ESP32 principal.
+
+
+
+El profesor aclaró que debe considerarse una solución general al problema del WDT, ya que el objetivo es encontrar la raíz del inconveniente. La delegación de carga a otro ESP32 sería una solución particular, pero no debe confundirse con la solución definitiva de este caso.
+
+
+Tareas adicionales indicadas por el profesor:
+                                                                                                                                                                                       * Analizar a fondo cuál es la verdadera causa del reinicio por WDT que se presenta en este proyecto.
+
+                                                                                                                                                                                       * Investigar cómo se conecta una ESP32-CAM con una ESP32 normal en el caso del uso compartido de la microSD, y confirmar si esa comunicación es por cable o bien se establece vía Wi-Fi.
+
+ Versiones heredadas identificadas:
+                                                                                                                                                                                          * Última versión estable: GaTransferWiFiGrafica_3 (utilizada en los experimentos finales).
+
+                                                                                                                                                                                          * Versión inestable: GaTransferWiFiGrafica_DHT (intentó integrar los DHT11 pero quedó con reinicios por problemas de WDT).
+
+
+________________
+
+
+Fecha: 24/09/2025 
+Autor: Profesor
+Título: sobre los comentarios de lo registrado el 22/9
+Sobre:
+“Hoy probamos alimentar el ESP32 directamente desde la fuente de 5 V por usb, pero notamos que en esa condición el microcontrolador no inicia correctamente.”
+
+
+No entiendo bien si se refieren al USB que tiene la fuente de PC o a un cargador USB de uds. o a qué se refieren con “directamente desde la fuente de 5 V por usb”. Si se refieren a la fuente de la PC que tiene un conector USB hembra, ya comentaron antes (15/9) que la dejaban de usar. Si es otra fuente de usb, me comentan luego. En el peor de los casos, ponen una foto y eso podría aclarar, en todo caso lo conversamos si Dios quiere en clase del próximo lunes. 
+
+
+Ahora que veo, en el informe del proyecto anterior cometieron el error de no documentar la alimentación de la placa del ESP32. Es bueno hacerlo ahora. Tiendo a creer que no lo hiceron vía USB sino con el pin de 3.3v de entrada (que creo que sería lo más lígico) o por el de 5v. La forma más directa de comprobar cómo alimentaron la placa en el proyecto anterior (y completamente “manual”, dado que en el proyecto anterior no se documentó correctamente) es directamente con un multímetro comprobar la continuidad de los pines de alimentación (3.3v y 5v) de la placa ESP32. Más específicamente: tengan en cuenta la posición de los pines de alimentación de la placa que usaron y en la placa perforada miren con qué están conectados o si no están conectados. Si ninguno de los pines de alimentación están conectados en la placa perforada ==> alimentaron la placa con USB. Si alguno está conectado, esa es la alimentación que usaron en el proyecto anterior. Si no están seguros de cómo hacerlo, traen el proyecto a clase y si Dios quiere lo hacemos en el aula misma. Si lo hacen, lo documentan acá y ya nos queda para referencia futura.
+
+
+Sobre los problemas de la placa perforada respecto a los conectores, creo que lo mejor por ahora es manejarnos directamente sin la placa perforada como intermediaria. Recuérdenme que les comente en clase por qué les sugiero esto.
+
+
+Por ahora, sería bueno que hagan el “mapeo” completo de lo que se conecta con la placa perforada, no solo lo que comentaba antes de la alimentación de la placa ESP32 sino de todo lo que se interconecta con la placa perforada, como mínimo para replicar experimentos y controlar las replicaciones a futuro.
+
+
+________________
+
+
+Fecha: 27/09/2025 
+Autor: Profesor
+Título: Placa ESP32 y Alimentación de la Placa
+Contacté a los autores del proyecto anterior, y me comentaron que la placa utilizada y su pinout es
+  
+
+Y, más importante y que no estaba en el informe que ellos entregaron: alimentaron la placa con 5V (usando el pin de 5v de la placa), sin usar USB. Todo indica que no usaron USB de la fuente de PC para alimentar nada.
+
+
+________________
+
+
+Bitácora — Montaje sin placa perforada
+ Fecha: 30 de septiembre de 2025
+Tema: Por qué evitar la placa perforada
+Según lo discutido en clase y registrado en la bitácora, el profesor sugirió no usar la placa perforada en este proyecto por las siguientes razones:
+                                                                                                                                                                                             * Conectores flojos → falsos contactos: los zócalos hembra tienden a aflojarse, los jumpers no quedan firmes y los cables se salen fácilmente. Esto genera fallas intermitentes difíciles de rastrear.
+
+                                                                                                                                                                                             * Problemas mecánicos y de conexión: al usarse como intermediaria, se suman dificultades en los pines hembra y en la transición hacia la placa principal. Esto hace poco confiable el montaje.
+
+                                                                                                                                                                                             * Diagnóstico complicado: un montaje inestable impide distinguir si la falla proviene del código, de un sensor o de un cable flojo.
+
+                                                                                                                                                                                             * Limitación de potencia: no está diseñada para corrientes altas (relé o calefactor). Puede calentarse o fallar al usarse con cargas.
+
+
+
+Alternativa propuesta: trabajar en protoboard (breadboard)
+La protoboard permite un montaje más firme y ordenado, evitando los problemas mencionados.
+1) Mapeo de conexiones
+                                                                                                                                                                                                * Registrar en tabla: dispositivo, pin en ESP32, voltaje requerido (3.3V/5V/12V) y tipo de señal.
+
+                                                                                                                                                                                                * Ejemplo: AHT10 externo → SDA a GPIO21 (I2C SDA), 3.3V, I2C.
+
+2) Elementos recomendados
+                                                                                                                                                                                                   * Protoboard como base del montaje.
+
+                                                                                                                                                                                                   * ESP32 con headers macho soldados para inserción directa.
+
+                                                                                                                                                                                                   * Jumpers macho–macho de buena calidad (pin metálico).
+
+                                                                                                                                                                                                   * Sensores con pines soldados o adaptadores.
+
+                                                                                                                                                                                                   * Para cargas (relé, calefactor): bornes o bloques de tornillo → nunca por la protoboard.
+
+3) Alimentación y potencia
+                                                                                                                                                                                                      * GND común en todas las fuentes (ESP32, 5V, 12V).
+
+                                                                                                                                                                                                      * Alimentación ESP32 por pin 5V desde la fuente (no USB).
+
+                                                                                                                                                                                                      * Relé y calefactor con 12V directo de la fuente, usando el relé solo como interruptor.
+
+                                                                                                                                                                                                      * Estabilidad: condensador 470 µF en línea de 5V y cerámicos 0.1 µF cerca del ESP32.
+
+                                                                                                                                                                                                      * Seguridad: fusible/limitador en línea de 12V.
+
+4) Ejemplo de layout en protoboard
+                                                                                                                                                                                                         * ESP32 al centro con headers.
+
+                                                                                                                                                                                                         * Rails laterales: uno para 5V y otro para GND.
+
+                                                                                                                                                                                                         * I2C (GPIO21 SDA, GPIO22 SCL) en paralelo a AHT10 y MLX90614.
+
+                                                                                                                                                                                                         * DHT11 en pines digitales distintos.
+
+                                                                                                                                                                                                         * Relé desde GPIO, carga de 12V directo a la fuente.
+
+                                                                                                                                                                                                         * Probar por etapas: ESP32 + un sensor → resto de sensores → relé/carga.
+
+5) Evitar falsos contactos
+                                                                                                                                                                                                            * Headers soldados en todos los módulos.
+
+                                                                                                                                                                                                            * Jumpers con pin sólido.
+
+                                                                                                                                                                                                            * Protoboard fijada a la mesa.
+
+                                                                                                                                                                                                            * Para conexiones permanentes: PCB o protoboard con bornes de tornillo.
+
+                                                                                                                                                                                                            * Etiquetado de cables.
+
+6) Documentación del montaje
+                                                                                                                                                                                                               * Fotos del circuito desde al menos 2 ángulos.
+
+                                                                                                                                                                                                               * Tabla de conexiones completa.
+
+                                                                                                                                                                                                               * Medición de voltajes (5V, 3.3V, 12V) antes de probar.
+
+                                                                                                                                                                                                               * Registro de pruebas paso a paso en la bitácora.
+
+7) Replicación sin placa perforada
+                                                                                                                                                                                                                  * Con el esquema eléctrico + fotos del montaje, cualquier compañero puede replicar el circuito en otra protoboard sin necesidad de la placa perforada.
+
+ Conclusión:
+ Se descarta la placa perforada por inestabilidad mecánica y limitaciones de potencia. En su lugar, se usará protoboard con headers soldados y jumpers de buena calidad, priorizando estabilidad, documentación y seguridad en la alimentación.
+
+
+
+
+________________
+
+
+📅 Fecha: 06/10/2025
+
+
+Título: Pedido de cables y jumpers para montaje en protoboard
+Referencia: Continuación de la entrada “Montaje sin placa perforada (30/09/2025)”
+Objetivo
+Solicitar los cables necesarios para realizar el nuevo montaje del sistema de control de temperatura sobre protoboard, reemplazando la placa perforada por un montaje más estable y seguro.
+El sistema completo utiliza 6 sensores/módulos conectados al ESP32-WROOM-32:
+Dispositivo        Pines de conexión        Tipo de cable necesario
+AHT10 interno        4 pines (VIN, GND, SDA, SCL)        4× macho–hembra
+AHT10 externo        4 pines        4× macho–hembra
+MLX90614 (IR)        4 pines        4× macho–hembra
+DHT11 interno        3 pines        3× macho–hembra
+DHT11 externo        3 pines        3× macho–hembra
+Relé 1 canal        3 pines (VCC, GND, IN)        3× macho–hembra
+ESP32 ↔ protoboard / fuente        2 pines (5 V y GND)        2× macho–macho
+Total de cables requeridos:
+23× macho–hembra + 2× macho–macho (mínimo funcional).
+
+
+________________
+
+
+Fecha: 6/10/2025 
+Autor: Profesor
+Título: Inicien los experimentos
+Materiales entregados: protoboard y cables.
+Como les decía hoy en clase (al menos a uno de uds.):
+a) No posterguen/retrasen el trabajo del proyecto. Si bien comentaron que “no era tan dificil”, confiarse en esa suposición no es buena idea en general y peor idea para este proyecto en particular. De hecho, el grupo anterior no lo completó por haber suspendido/retrasado el trabajo.
+b) Los trabajos de las demás asignaturas no pueden ser una “razón” para postergar el trabajo de esta asignatura, así como el trabajo de esta asignatura no puede ser una “razón” para postergar el trabajo de las demás. Uds. se anotaron en las asignaturas y son los que tienen que administrar apropiadamente el tiempo y avance del trabajo en las asignaturas que eligieron hacer en este período, en particular en esta asignatura/proyecto.
+c) Tengan en cuenta que hay varios WDT y ni siquiera se sabe cuál es el que genera el problema de reinicio del sistema.
+d) Reconecten todos los sensores y las resistencias de manera “secuencial” siendo los últimos los DHT, para verificar paso por paso que todo funciona y replicar el problema del WDT al agregar los DHT como último paso.
+e) Pueden considerar cada agregado de los sensores y las resistencias como un experimento en sí mismo, con lo cual tendrían varios sketches/.ino, uno por cada agregado de sensores, que podrían ir generando en la carpeta para dejar constancia de por dónde van avanzando.
+f) Recuerden que todos los sensores ya tienen identificado cómo se alimenta y a qué pines de la placa con ESP32 se conectan. No cambien la alimentación ni el control de las resistencias. No prendan las resistencias por mucho tiempo, los experimentos de control de temperatura y transferencia de temperatura ahora mismo no son lo importante, sino resolver el problema de WDT-reinicio.
+________________
+
+
+
+
+
+
+
+
+ Entrada #XX – Conexión del ESP32 y reorganización en protoboard
+Fecha: 6 de octubre de 2025
+________________
+
+
+Descripción del avance
+El profesor nos entregó una protoboard para continuar con las conexiones del proyecto.
+  
+
+ Sin embargo, al momento de conectar el ESP32, se observó que una sola protoboard no resulta suficiente, debido al ancho del módulo y la cantidad de cables necesarios.
+  
+
+Se muestra en la bitácora una foto donde se evidencia la falta de espacio.
+Para solucionar esto, se conectaron dos protoboards modulares, las cuales pueden unirse físicamente como si fueran una sola unidad (también se adjunta imagen de esta unión).
+  
+  
+
+Actualmente, una de las protoboards disponibles pertenece a otro proyecto, por lo que se solicitará al profesor una segunda protoboard adicional para dejar esta conexión de forma permanente y exclusiva para el proyecto actual.
+El profesor también indicó que la bitácora debe permanecer editable con tan solo tener el link compartido, para facilitar las actualizaciones y el seguimiento del progreso.
+________________
+
+
+Reorganización de cables y mejoras
+Aprovechando la extensión del espacio, se organizaron los cables para trabajar de forma más cómoda, implementando un sistema de colores para identificar rápidamente cada conexión.
+Se usaron termocontraíbles en los extremos de los cables para reforzar las uniones y asegurar una mayor firmeza y durabilidad.
+Sistema de colores definido:
+Cables macho–hembra:
+Color
+	Función
+	🟧 Naranja
+	3.3 V
+	⚫ Negro
+	GND
+	🟩 Verde
+	I²C SDA
+	⚪ Blanco
+	I²C SCL
+	🔵 Azul
+	DATA DHT
+	🔴 Rojo
+	VCC relé (5 V)
+	🩶 Gris / 🟣 Violeta
+	IN del relé
+	Se muestra una foto de los cables preparados con su respectivo orden de colores.
+  
+
+________________
+
+
+Pruebas de funcionamiento
+Una vez realizada la extensión de cables y reconectado todo el circuito a la protoboard, se encendió nuevamente el dispositivo.
+  
+  
+  
+
+                                                                                                                                                                                                                     * Alimentado desde la fuente externa de 5.22 V, el servidor web no funcionó.
+
+                                                                                                                                                                                                                     * Al probar con la alimentación por USB, el servidor web volvió a funcionar correctamente.
+
+Esto sugiere que puede haber un problema en la conexión o regulación del pin de 5 V del ESP32, o una diferencia en cómo se distribuye la corriente cuando se alimenta externamente.
+Se deja pendiente investigar la causa del fallo al alimentar por los pines de 5 V, para garantizar la estabilidad y seguridad de la conexión.
+________________
+
+
+Próximos pasos
+                                                                                                                                                                                                                        * Solicitar al profesor una segunda protoboard permanente para el proyecto.
+
+                                                                                                                                                                                                                        * Verificar las diferencias entre la alimentación por USB y por pin de 5 V.
+
+                                                                                                                                                                                                                        * Evaluar la posible necesidad de un diodo o regulador intermedio para protección.
+
+
+
+Entrada #XX – Pruebas de funcionamiento del relé y observación de seguridad
+Fecha: 6 de octubre de 2025
+________________
+
+
+Descripción del avance
+Durante las pruebas realizadas con el tester y el programa heredado en ejecución (controlando el relé desde el cliente web offline), se detectó un comportamiento importante en la configuración del sistema.
+El análisis mostró que el software actual está configurado para operar con un relé “normalmente cerrado” (NC).
+Esto significa que, cuando el sistema está sin energía lógica, las resistencias cerámicas continúan recibiendo corriente, ya que el relé permanece cerrado por defecto.
+________________
+
+
+Análisis del problema
+Este comportamiento implica un riesgo potencial de seguridad, dado que si el sistema se apaga o pierde alimentación en el módulo de control (ESP32), las resistencias seguirían calentándose sin supervisión, lo que podría ocasionar daños o situaciones peligrosas.
+Por lo tanto, se considera necesario evaluar si conviene mantener el relé en modo “normalmente cerrado” o modificarlo a “normalmente abierto” (NO) para que las resistencias solo se activen cuando la lógica esté energizada y bajo control del programa.
+________________
+
+
+Próximos pasos
+                                                                                                                                                                                                                           * Evaluar junto al equipo si cambiar la configuración del relé a “normalmente abierto”.
+
+
+ Entrada de Bitácora — Testeo y estabilización de DHT11 con ESP32 y LED indicador de error
+Fecha: 10/10/2025
+
+________________
+Objetivo
+Verificar el correcto funcionamiento del sensor DHT11 conectado al ESP32, y agregar un LED indicador de error en el pin GPIO 4, que se encienda ante fallas en la lectura de temperatura o humedad. Además, evaluar la estabilidad del sistema con distintas fuentes de alimentación y configuraciones de tierra.
+________________
+
+
+ Desarrollo de la prueba
+                                                                                                                                                                                                                           1. Conexión del DHT11:
+
+                                                                                                                                                                                                                              * Se conectó el DHT11 al pin GPIO 14 del ESP32.
+
+                                                                                                                                                                                                                              * Se detectó que el GND del sensor debía compartir el mismo GND del ESP32 para garantizar lecturas correctas.
+
+                                                                                                                                                                                                                              * Al usar tierras separadas (fuente independiente), el sensor solo devolvió NA osea valores nulos.
+
+                                                                                                                                                                                                                                 2. Fuente de alimentación:
+
+                                                                                                                                                                                                                                    * Con el ESP32 conectado al puerto USB de una PC (“USB inteligente”), el sensor funciona correctamente y los valores de temperatura y humedad son coherentes.
+
+                                                                                                                                                                                                                                    * Conectado a la fuente proveída por la cátedra (“USB tonto”), el comportamiento del LED y del sensor fue errático:
+
+                                                                                                                                                                                                                                       * El LED (conectado al GPIO 4) a veces encendía o apagaba sin respetar la lógica del programa.
+
+                                                                                                                                                                                                                                       * En ocasiones, el DHT11 devolvía lecturas de 0 °C y 0 % H, incluso con la fuente de 3,3 V desconectada.
+
+                                                                                                                                                                                                                                          3. Solución parcial:
+
+                                                                                                                                                                                                                                             * Se colocó una resistencia pull-up de 10 kΩ en GPIO4 que mejoró la estabilidad del sistema.
+
+                                                                                                                                                                                                                                             * Aun así, cuando el sensor quedaba alimentado parcialmente (por ejemplo, al desconectar la fuente independiente de 3,3 V), podían aparecer valores nulos.
+
+                                                                                                                                                                                                                                                4. Prueba de LED indicador:
+
+                                                                                                                                                                                                                                                   * Se usó un LED rojo con resistencia de 220 Ω conectado al GPIO 4 con pull up de 10 kΩ.
+
+                                                                                                                                                                                                                                                   * En condiciones normales, el LED se apaga.
+
+                                                                                                                                                                                                                                                   * Si el sensor arroja un error (NaN), el LED se enciende y se muestra el mensaje en el monitor serie.
+
+                                                                                                                                                                                                                                                   * Después de agregar el pull up y con alimentación desde cualquier usb o desde los pines de 5v, el comportamiento fue correcto; con alimentación externa, persistieron fallos de los 0 grados centígrados.
+
+Entrada de Bitácora — Testeo del sensor AHT10 con ESP32 (I2C único)
+Fecha: 10/10/2025
+Descripción
+Se realizó una prueba del sensor AHT10 conectado al ESP32 utilizando la librería Adafruit_AHTX0 y el bus I2C en los pines SDA 21 y SCL 22.
+El objetivo fue comprobar si el sensor respondía correctamente y si enviaba datos de temperatura y humedad.
+Desarrollo
+Se inicializó el bus I2C y el sensor AHT10.
+Cuando el sensor se inicializó correctamente, se comenzaron a mostrar lecturas de temperatura y humedad cada segundo por el monitor serie.
+Durante el proceso se observó que los dos sensores AHT10 disponibles no eran iguales:
+uno de ellos tiene los pines en distinto orden que el otro.
+A partir de esta detección, se decidió tener en cuenta esa diferencia física en los próximos montajes y pruebas, para evitar confusiones o errores de conexión.
+Resultados
+El sensor funcionó correctamente al estar conectado por USB a la computadora.
+ Conclusión
+El AHT10 responde bien por I2C con los pines 21 (SDA) y 22 (SCL) cuando comparte el mismo GND con el ESP32 y la fuente es estable.
+Además, se constató que existen variantes del AHT10 con distinto orden de pines, lo cual deberá verificarse antes de cada conexión.
+
+
+
+
+Entrada de Bitácora — Testeo del sensor MLX90614 con LED indicador de error
+Fecha: 10/10/2025
+________________
+
+
+ Descripción
+Se realizó una prueba del sensor de temperatura infrarrojo MLX90614 conectado al ESP32, con el objetivo de comprobar su funcionamiento y agregar un LED rojo indicador de error que se encienda cuando el sensor no responda o devuelva lecturas inválidas.
+________________
+
+
+ Desarrollo
+                                                                                                                                                                                                                                                      * Se utilizó la librería Adafruit_MLX90614 para gestionar la comunicación por I2C.
+
+                                                                                                                                                                                                                                                      * El sensor se conectó a los pines SDA 21 y SCL 22, compartiendo el mismo GND que el ESP32.
+
+                                                                                                                                                                                                                                                      * Se agregó un LED rojo con resistencia de 220 Ω conectado al GPIO 4, configurado para encenderse cuando el sensor arroje un error y apagarse cuando las lecturas sean correctas.
+
+                                                                                                                                                                                                                                                      * Durante la inicialización, si el MLX90614 no era detectado en el bus I2C, el LED permanecía encendido indicando fallo de comunicación.
+
+________________
+
+
+ Resultados
+                                                                                                                                                                                                                                                         * El sensor MLX90614 respondió correctamente al estar alimentado desde el puerto USB de la computadora o de la fuente.
+
+                                                                                                                                                                                                                                                         * En condiciones normales, las lecturas de temperatura ambiente y de objeto se mostraron estables y coherentes.
+
+                                                                                                                                                                                                                                                         * El LED rojo funcionó correctamente como indicador:
+
+                                                                                                                                                                                                                                                            * Encendido: error de inicialización o lectura.
+
+                                                                                                                                                                                                                                                            * Apagado: funcionamiento normal.
+
+________________
+
+
+Conclusión
+El MLX90614 funcionó correctamente con el ESP32 usando el bus I2C (pines 21 y 22).
+El LED rojo en GPIO 4 resultó útil como indicador visual de error, facilitando la detección rápida de fallos de comunicación o desconexión del sensor.
+Se recomienda mantener la misma referencia de tierra (GND) y una fuente USB estable para evitar lecturas erráticas.
+
+
+Entrada de Bitácora — Reorganización del Cableado de Sensores
+Fecha: 13/10/2025
+________________
+
+
+Descripción
+Se decidió abandonar el esquema de colores de los cables Dupont utilizado hasta el momento para identificar los distintos sensores.
+El motivo fue reducir el desorden visual del cableado dentro de la protoboard.
+En su lugar, cada sensor pasó a tener sus cables agrupados dentro de un tubo termocontraíble, facilitando el manejo y evitando confusiones entre líneas de datos, alimentación y tierra.
+
+________________
+
+
+Desarrollo
+                                                                                                                                                                                                                                                               * Se retiraron los cables Dupont individuales que conectaban cada sensor (AHT10, DHT11, MLX90614, etc.) a la protoboard.
+
+                                                                                                                                                                                                                                                               * Se agruparon los tres o cuatro cables de cada sensor (VCC, GND, SDA, SCL o señal) dentro de un tubo termocontraíble, logrando mayor robustez y prolijidad.
+
+                                                                                                                                                                                                                                                               * Se volvieron a realizar las conexiones sobre la protoboard utilizando alambre rígido en lugar de cables Dupont flexibles, y se cubrieron los alambres con termocontraíble para evitar falsos contactos.
+
+                                                                                                                                                                                                                                                               * Se comprobó continuidad de cada línea con tester antes de energizar el circuito.
+    
+________________
+
+
+ Resultados
+                                                                                                                                                                                                                                                                  * Las conexiones quedaron más firmes y estables, reduciendo los falsos contactos que se detectaban previamente al mover los cables.
+
+                                                                                                                                                                                                                                                                  * El cableado se volvió más ordenado y fácil de seguir, ya que cada sensor ahora está claramente identificado por su agrupamiento físico.
+
+                                                                                                                                                                                                                                                                  * No se registraron fallas de lectura luego de la reorganización.
+
+________________
+
+
+ Conclusión
+La reorganización del cableado mediante alambre rígido y termocontraíble mejoró significativamente la estabilidad eléctrica y mecánica del montaje.
+El sistema se volvió más confiable y visualmente más limpio, lo cual facilitará los futuros test de sensores.
+
+
+
+
+🧩 Entrada de Bitácora — Test de programa heredado
+Fecha: 17/10/2025
+Descripción del evento:
+ Durante las pruebas del programa heredado del proyecto anterior, se detectó un reinicio inesperado del microcontrolador ESP32, acompañado del mensaje de error tipo Guru Meditation Error: Core / panic'ed (Cache error) en el monitor serie.
+Análisis preliminar:
+ Se presume que el reinicio está vinculado con el Watchdog Timer (WDT) del sistema. En una conversación previa, el profesor había mencionado que en nuestros propios tests de lectura de todos los sensores (realizados en un único archivo) no se producía este reinicio debido a que la comunicación serial (cada vez que leía un sensor) con la PC mantenía activo el sistema bajo el control de FreeRTOS, provocando que el WDT se reinicie periódicamente y no genere el fallo, sin embargo no usamos freeRTOS.+
+Sin embargo, en el proyecto heredado observamos que el reinicio ocurre igualmente, a pesar de que el código incluye múltiples llamadas a Serial.println() para enviar lecturas de temperatura y humedad. 
+Evidencia:
+ Capturas del monitor serie donde se observa:
+                                                                                                                                                                                                                                                                     * Mensajes de error I2C (i2c_master: I2C transaction failed, hardware NACK detected).
+  
+                                                                                                                                                                                                                                                                     * Reinicio del microcontrolador con Guru Meditation Error y volcados de registro de los núcleos 0 y 1.
+  
+
+
+
+
+
+
+🧩 Entrada de Bitácora — Cambios realizados
+Fecha: 17/10/2025 
+Resumen breve
+                                                                                                                                                                                                                                                                        * Se identificó que los reinicios están relacionados con WDT de interrupciones (Interrupt WDT / INT WDT).
+                                                                                                                                                                                                                                                                        * Modificar el tiempo del WDT “por hardware/SDK” en Arduino no es viable sin reemplazar el core por ESP‑IDF, lo cual viola el requisito de seguir con Arduino IDE.
+                                                                                                                                                                                                                                                                        * Se probó ejecutar en Core 1, y se observó un tiempo mayor antes del reinicio (~8 minutos).
+                                                                                                                                                                                                                                                                        * Nuevo log evidencia Task WDT con tareas afectadas (IDLE0) y ejecución en CPU 0: Web Server Task / CPU 1: loopTask.
+________________
+
+
+Registro textual provisto (cita)
+los origenes de los wdt son (Interrupt WDT (INT WDT), Task WDT , RTC WDT, WiFi/Bluetooth WDT , Timer Group WDT)
+hemos detectados que la interrupcion de wdt es por Interrupt Watchdog (INT WDT) debido a lo que aparefce en el log "Guru Meditation Error: Core 0 panic ed (Interrupt wdt timeout on CPU0)"
+cambiar el tiempo del wdt por hardware requiere cambiar el sdk precompilado de el esp32 que usa arduino tambien hay otra solucion pero requiere abandonar el ide arduiono y reemplazarla por ESP-IDF , el cual incumple el requisito de que se use arduino ide.
+se decidio cambiar a el core uno y se noto que tarda mas en reiniciarse, en aproximadamente 8 minutos, el mensaje de error es el siguiente
+  
+
+
+
+
+
+📘 Entrada de bitácora – Prueba estable en Core 1
+ Fecha: 17/10/2025
+Descripción:
+Se realizó una nueva prueba configurando tanto el servidor web como la lectura de los sensores en el Core 1 del ESP32. Durante la ejecución, el sistema funcionó de forma estable por más de una hora, sin reinicios, errores del watchdog ni pérdidas de conexión.
+Resultado: ✅ Estable y sin errores tras >1 h de funcionamiento continuo.
+Observaciones: La distribución unificada en el Core 1 eliminó los conflictos previos entre tareas del servidor y lectura de sensores.
+
+
+
+
+
+
+🧾 Entrada de bitácora — Separación de módulos y análisis de rendimiento (18/10/2025)
+Resumen:
+Durante esta sesión se reorganizó el código del servidor web para mejorar su mantenibilidad y modularidad. Se separaron los componentes principales del sistema en archivos independientes y se realizó un análisis del mecanismo de guardado de datos.
+Cambios realizados:
+                                                                                                                                                                                                                                                                        * 🔹 Separación del HTML: todo el código HTML fue movido fuera del archivo principal del servidor (.ino), quedando ahora en un archivo dedicado. Esto facilita la lectura, edición y depuración del backend.
+
+                                                                                                                                                                                                                                                                        * 🔹 Separación de la gráfica: se creó un archivo independiente para la parte de la gráfica (web_chart.h), lo que permite activar o desactivar fácilmente la visualización de datos mediante un #define.
+
+
+Por ahora se mantiene activa, ya que resulta útil para visualizar las lecturas en tiempo real.
+
+
+                                                                                                                                                                                                                                                                        * 🔹 Estructura modular actualizada: el proyecto queda organizado en:
+
+                                                                                                                                                                                                                                                                           * web_page_core.h → estructura base del sitio web.
+
+                                                                                                                                                                                                                                                                           * web_chart.h → componente gráfico (gráfica de sensores).
+
+                                                                                                                                                                                                                                                                           * web_send.h → envío de datos al cliente.
+
+Hallazgos técnicos:
+                                                                                                                                                                                                                                                                              * Se detectó que la generación del archivo CSV se realiza completamente del lado cliente (navegador).
+Esto implica que:
+
+                                                                                                                                                                                                                                                                                 * La velocidad de almacenamiento depende de la frecuencia de actualización del navegador.
+
+                                                                                                                                                                                                                                                                                 * Se limitan las tasas de muestreo y el rendimiento al guardar datos de sensores de alta frecuencia.
+
+Propuesta:
+                                                                                                                                                                                                                                                                                    * Migrar la generación del CSV al lado del servidor (ESP32).
+Esto permitiría:
+
+                                                                                                                                                                                                                                                                                       * Mejor control de la tasa de actualización y almacenamiento.
+
+                                                                                                                                                                                                                                                                                       * Registro más confiable de datos sensados.
+
+                                                                                                                                                                                                                                                                                       * Posible integración con memoria interna o SD en el futuro.
+
+Estado actual:
+✅ Sistema funcionando correctamente con estructura modular y visualización activa.
+⚙️ Pendiente de implementar la nueva lógica de guardado del CSV del lado servidor.
+
+
+
+
+🧩 Entrada de Bitácora — Modularización y Clase de Depuración
+Fecha: 19/10/2025
+________________
+
+
+Descripción de la actualización
+Se creó una clase Debug destinada a centralizar la gestión de todos los mensajes de depuración del sistema.
+Esta clase permite:
+                                                                                                                                                                                                                                                                                          * Activar o desactivar grupos de logs según su tipo (por ahora solo sensores o general).
+
+                                                                                                                                                                                                                                                                                          * Cambiar el estilo visual de los logs (prefijos, íconos).
+
+                                                                                                                                                                                                                                                                                          * Mantener un control global del nivel de detalle de las salidas por consola.
+
+________________
+
+
+Mejoras implementadas
+                                                                                                                                                                                                                                                                                             * Se modularizaron otras partes del programa, reorganizando el código en archivos independientes para mejorar la legibilidad y mantenibilidad.
+
+                                                                                                                                                                                                                                                                                             * Se facilitó el proceso de análisis de fallos y rendimiento, gracias a una salida de logs más ordenada y segmentada.
+
+🧾 Entrada de Bitácora — Test de estabilidad prolongado
+Fecha: 20/10/2025
+Descripción del ensayo:
+Se realizó una prueba de estabilidad del sistema con todos los módulos activos (servidor web, lectura de sensores y control) ejecutándose en simultáneo. El objetivo fue evaluar la confiabilidad del sistema en funcionamiento continuo durante un período prolongado.
+Duración del test:
+Más de 7 horas de operación ininterrumpida.
+Resultados:
+                                                                                                                                                                                                                                                                                                * No se detectaron errores ni reinicios espontáneos.
+
+                                                                                                                                                                                                                                                                                                * No se registraron fallas en la comunicación I2C ni en la respuesta de los sensores.
+
+                                                                                                                                                                                                                                                                                                * El servidor web mantuvo la conexión estable durante todo el período.
+
+                                                                                                                                                                                                                                                                                                * La temperatura y humedad fueron leídas correctamente en todos los ciclos.
+
+Conclusión:
+El sistema demostró una alta estabilidad y confiabilidad durante el ensayo.
+El experimento fue detenido manualmente, sin que se produjera ningún error o malfuncionamiento.
+Se debe de probar el sistema en frecuencias mayores ya que actualmente se esta escaneando a una frecuencia de  1hz
+
+
+________________
+
+
+Fecha: 20 de octubre de 2025
+Clase
+-Aclaración de las Notas de Evaluación
+
+
+-Para documentar:
+1) Resolución “estable” del problema de WDT: “todo to en core 1”
+2) Trabajar solo con la versión que NO depende de internet (sin gráficos en el navegador)
+3) Implementar y documentar frecuencias con y sin calefactoras:
+   3.1) Con calefactoras (mientras están alimentadas las resistencias): frecuencia “frecuencia alta”... 1Hz
+   3.2) Sin calefactoras: frecuencia “frecuencia baja” … 0.1 Hz o menor
+
+
+
+
+________________
+
+
+📘 Entrada de Bitácora — Correcciones Indicadas por el Profesor
+Fecha: 22/10/2025
+________________
+
+
+Resumen:
+ Durante la revisión con el profesor, se señalaron varias observaciones y correcciones necesarias sobre el informe y algunos aspectos técnicos del proyecto.
+________________
+
+
+Detalles de la reunión y observaciones:
+                                                                                                                                                                                                                                                                                                   *  Correcciones al informe:
+ El profesor indicó que faltan incluir los esquemáticos del circuito, ya que actualmente no están presentes en el documento entregado.
+
+                                                                                                                                                                                                                                                                                                   *  Categorías de voltaje:
+ Se mencionó que en el diseño hay componentes separados en distintas categorías de voltajes, lo cual puede dar a entender que pertenecen a diferentes dominios eléctricos. Se debe revisar y unificar esta categorización para que quede claro qué componentes trabajan en cada nivel de tensión (3.3 V, 5 V, etc.).
+
+                                                                                                                                                                                                                                                                                                   *  Daño en ESP32:
+ Se comentó el caso del ESP32 dañado al conectar un pin que figuraba como GND, pero que en realidad no era tierra física, a pesar de estar etiquetado así. Se compro otro ESP32 y el profesor repuso el dinero gastado.
+
+                                                                                                                                                                                                                                                                                                   *  Generación del archivo CSV:
+ El profesor aclaró que no es necesario realizar la generación del CSV en el backend, por lo que se puede mantener la exportación del archivo del lado del cliente (frontend), simplificando el flujo del sistema.
+
+                                                                                                                                                                                                                                                                                                   *  Frecuencia de muestreo:
+ Se indicó que la frecuencia de lectura debe variar según el estado de la resistencia calefactora:
+
+                                                                                                                                                                                                                                                                                                      * Cuando la resistencia está apagada, la frecuencia de muestreo debe ser de 1 Hz (una lectura por segundo).
+
+                                                                                                                                                                                                                                                                                                      * Cuando la resistencia está encendida, la frecuencia debe reducirse a 0.1 Hz (una lectura cada 10 segundos), para evitar sobrecarga o interferencias en la medición.
+
+________________
+
+
+Acciones a realizar:
+                                                                                                                                                                                                                                                                                                         1. Agregar el esquemático eléctrico completo al informe.
+
+                                                                                                                                                                                                                                                                                                         2. corregir el informe con respecto a la categorización de los componentes segun el voltaje.
+
+                                                                                                                                                                                                                                                                                                         3. Mantener la generación del CSV del lado del cliente.
+
+                                                                                                                                                                                                                                                                                                         4. Ajustar la frecuencia de muestreo en el código según el estado de la resistencia.
+
+🧾 Entrada de Bitácora — Comportamiento del Relé y Ajustes de Lógica
+Fecha: 24/10/2025
+________________
+
+
+Descripción del hallazgo:
+ Durante las pruebas realizadas con el módulo de relé, se descubrió que el relé se activa cuando la señal de control está en nivel lógico LOW, en lugar de HIGH, en el caso de que el relé sea del tipo “normalmente abierto (NO)”.
+Este comportamiento invertido respecto de la lógica esperada llevó a revisar la configuración y el control del relé en el código.
+________________
+
+
+Acciones realizadas:
+                                                                                                                                                                                                                                                                                                            * Se confirmó experimentalmente que el relé cambia de estado (se activa) cuando la señal pasa a LOW.
+
+                                                                                                                                                                                                                                                                                                            * Se actualizó la lógica del programa para invertir los valores de control, es decir:
+
+                                                                                                                                                                                                                                                                                                               * Donde se utilizaba HIGH para encender, ahora se utiliza LOW.
+
+                                                                                                                                                                                                                                                                                                               * Donde se utilizaba LOW para apagar, ahora se utiliza HIGH.
+
+                                                                                                                                                                                                                                                                                                                  * Se verificó que con esta corrección el comportamiento del sistema coincide con el esperado: el relé permanece apagado por defecto y se activa solo cuando el sistema lo requiere.
+
+________________
+
+
+Resultado:
+ El relé responde correctamente a las órdenes de control según la nueva configuración.
+El sistema mantiene coherencia en la lógica de encendido/apagado, y se evitó un posible error de funcionamiento en las etapas de control de temperatura.
+
+
+🧾 Entrada de Bitácora — Sistema de Conteo de Tiempo Mejorado
+Fecha: 24/10/2025
+________________
+
+
+🔧 Descripción de la Modificación
+Se implementó un nuevo sistema de conteo de tiempo más seguro y estable para el registro de lecturas de sensores.
+El sistema anterior presentaba solo era un contador que aumentaba en 1 cada vez que el sensor hacía una lectura.
+Ahora se utiliza un método unificado y controlado para medir el tiempo de ejecución de cada lectura.
+________________
+
+
+⏱️ Detalles Técnicos
+                                                                                                                                                                                                                                                                                                                     * Se pasó a un sistema de conteo de tiempo centralizado, asegurando coherencia entre las lecturas.
+
+                                                                                                                                                                                                                                                                                                                     * En cada ciclo de muestreo se almacena el tiempo absoluto (en formato hh:mm:ss) y la diferencia respecto a la lectura anterior (Δt en ms).
+
+
+________________
+
+
+📊 Resultados Observados
+                                                                                                                                                                                                                                                                                                                        * Los valores de Δt (ms) se mantienen estables y reflejan correctamente el intervalo real entre lecturas.
+
+                                                                                                                                                                                                                                                                                                                        * Se observó una mayor precisión temporal y coherencia entre sensores, especialmente cuando el sistema trabaja en multitarea o bajo carga.
+
+________________
+
+
+✅ Conclusión
+Con esta mejora, el sistema de registro de datos adquiere mayor fiabilidad temporal, lo cual permitirá un análisis más exacto de los tiempos de respuesta y estabilidad térmica del experimento.
+Se considera esta versión como base para futuras pruebas de optimización del muestreo y sincronización.
+
+
+
+
+
+
+🧾 Entrada de Bitácora — Frecuencia de Lectura Variable según Estado del Relé
+Fecha: 24/10/2025
+________________
+
+
+⚙️ Descripción de la Modificación
+Se implementó una frecuencia de lectura variable en función del estado del relé principal encargado de controlar la resistencia calefactora.
+Esta mejora permite optimizar el uso de recursos del microcontrolador y adaptar la frecuencia de muestreo según las condiciones del sistema.
+________________
+
+
+🔄 Lógica Implementada
+                                                                                                                                                                                                                                                                                                                           * Relé encendido: frecuencia de lectura de 1 Hz (una lectura por segundo).
+
+                                                                                                                                                                                                                                                                                                                              * Justificación: cuando la resistencia está activa, los cambios de temperatura son más rápidos y requieren un seguimiento cercano.
+
+                                                                                                                                                                                                                                                                                                                                 * Relé apagado: frecuencia de lectura de 0.1 Hz (una lectura cada 10 segundos).
+
+                                                                                                                                                                                                                                                                                                                                    * Justificación: en reposo térmico, las variaciones son lentas, por lo que se reduce la frecuencia para ahorrar procesamiento y energía.
+
+________________
+
+
+💡 Detalles Técnicos
+
+                                                                                                                                                                                                                                                                                                                                       * El sistema utiliza el nuevo contador de tiempo seguro para calcular los intervalos exactos de muestreo.
+
+                                                                                                                                                                                                                                                                                                                                       * La frecuencia se actualiza automáticamente cada vez que cambia el estado del relé, sin necesidad de reiniciar el ciclo principal.
+
+________________
+
+
+📈 Resultados Observados
+                                                                                                                                                                                                                                                                                                                                          * El sistema responde correctamente al cambio de estado del relé, ajustando la frecuencia de lectura en la siguiente lectura.
+
+                                                                                                                                                                                                                                                                                                                                          * La estabilidad del registro de datos se mantiene, con una disminución significativa del uso de CPU durante períodos de inactividad térmica.
+
+                                                                                                                                                                                                                                                                                                                                          * La representación en el CSV y en el monitor serie muestra los tiempos coherentes con la frecuencia configurada.
+
+________________
+
+
+✅ Conclusión
+Con la incorporación de la frecuencia de lectura variable, el sistema logra una mejor eficiencia y adaptabilidad térmica, manteniendo precisión en las mediciones mientras optimiza recursos durante fases de reposo.
+
+
+________________
+
+
+Fecha: 27 de octubre de 2025
+Clase - Antado por el prof.
+- No entregar informe de avance de Nov.
+- Documentar acá y luego en el informe los experimentos donde se replica el problema de WDT conversados en clase. Cada experimento con: a) su propio código b) “screenshot” de error y c) breve explicación de qué tarea se aloja en cada core y cuánto tiempo aprox. pasó hasta que se produjo el error.
+- Anotar acá lo demás conversado en clase
+- Rearmar el proyecto para empezar los experimentos en el prototipo
+
+
+
+
+
+
+________________
+
+
+🧾 Entrada de Bitácora
+Fecha: 27/10/2025
+Tema: Ajustes de hardware, pruebas de muestreo y sincronización de tareas
+Resumen de las actividades realizadas:
+                                                                                                                                                                                                                                                                                                                                             * El profesor informó que traerá una nueva protoboard para reemplazar la actual, ya que la pusimos de nuestro lado.
+
+                                                                                                                                                                                                                                                                                                                                             * Se agregaron capacitores cerámicos y un electrolítico al circuito, aunque todavía no se determinó si aportan más ventajas que desventajas. En caso de no mejorar las lecturas, podrían retirarse.
+
+________________
+
+
+Pruebas de muestreo y comunicación frontend-servidor:
+                                                                                                                                                                                                                                                                                                                                                * Se realizaron tests de muestreo, donde el frontend registraba logs de las muestras y contaba la cantidad total, mientras que en la terminal del ESP32 se imprimían las mismas lecturas.
+
+                                                                                                                                                                                                                                                                                                                                                * A partir de estas pruebas se observó que aproximadamente el 3 % de las muestras se pierden.
+
+                                                                                                                                                                                                                                                                                                                                                * El frontend actualiza la interfaz a unos 4 Hz, mientras que los sensores muestrean a 1 Hz, por lo que en principio no debería haber pérdida de datos.
+
+                                                                                                                                                                                                                                                                                                                                                * Se consideraron dos posibles soluciones:
+
+                                                                                                                                                                                                                                                                                                                                                   1. Evitar que el navegador se actualice automáticamente, haciendo que solo lo haga cuando el servidor lo indique (cuando haya nuevas muestras disponibles).
+
+                                                                                                                                                                                                                                                                                                                                                   2. Enviar varias muestras juntas en un solo paquete, lo cual reduciría pérdidas, pero implicaría modificar gran parte del frontend y perder la sensación de tiempo real actual.
+
+________________
+
+
+Observaciones sobre el comportamiento de los sensores:
+                                                                                                                                                                                                                                                                                                                                                      * Se notó que el sensor DHT11 entrega lecturas muy constantes, en contraste con los demás sensores (AHT y MLX) que muestran una variación tipo “efecto sierra”. Esto podría deberse a la baja resolución o precisión del DHT11.
+
+                                                                                                                                                                                                                                                                                                                                                      * También se detectaron diferencias de temperatura entre sensores del mismo tipo ubicados en el mismo entorno.
+
+                                                                                                                                                                                                                                                                                                                                                      * Se propuso realizar una calibración inicial, tomando por ejemplo 10 muestras promedio por sensor y ajustando los valores mediante offsets para igualar las lecturas, exceptuando el sensor infrarrojo de objeto, que mide una variable distinta.
+
+________________
+
+
+Pruebas con FreeRTOS y sincronización de tareas:
+                                                                                                                                                                                                                                                                                                                                                         * Se experimentó con dividir la lectura de cada sensor en tareas separadas, coordinadas mediante banderas (event groups).
+
+                                                                                                                                                                                                                                                                                                                                                         * Estas pruebas provocaron resets por el WDT (watchdog timer), especialmente cuando el DHT formaba parte de las combinaciones de sensores a sincronizar.
+
+                                                                                                                                                                                                                                                                                                                                                         * El profesor recomendó realizar un video demostrativo mostrando todos los sensores funcionando simultáneamente en el Core 1, sin errores del WDT, como evidencia de estabilidad del sistema.
+
+Conclusión:
+ Se avanzó en la detección de causas potenciales de pérdida de muestras y diferencias entre sensores. Los próximos pasos incluyen validar la influencia de los capacitores.
+
+
+
+
+________________
+
+
+📘 Entrada de bitácora — Calibración de sensores
+Resumen de actividad:
+ Se realizó una calibración experimental de los sensores de temperatura y humedad. El proceso consistió en tomar 10 muestras consecutivas de todos los sensores durante un período total de 10 segundos, calculando luego el promedio general de las lecturas.
+A partir de este promedio, se determinó cuánto debía sumarse o restarse a cada sensor para que sus valores iniciales quedaran alineados con el promedio global, logrando así una base de medición más uniforme.
+Observaciones:
+                                                                                                                                                                                                                                                                                                                                                            * Se comprobó que el sistema de calibración funciona correctamente, aunque falta implementar un botón físico o virtual que permita activar la calibración manualmente cuando el usuario lo desee.
+
+                                                                                                                                                                                                                                                                                                                                                            * Durante las pruebas, al tomar con la mano los sensores externos, se observó nuevamente una diferencia de temperatura: el AHT externo mostró una suba más rápida que el DHT externo, lo cual sugiere una diferente respuesta térmica entre ambos.
+
+Próximos pasos:
+                                                                                                                                                                                                                                                                                                                                                               * Implementar el botón de calibración manual.
+
+                                                                                                                                                                                                                                                                                                                                                               * Analizar y compensar la distinta sensibilidad térmica entre los sensores externos.
+
+                                                                                                                                                                                                                                                                                                                                                               * Registrar nuevas pruebas con cambios controlados de temperatura.
+
+
+En la imagen se observa que en el momento de aplicar la calibración, todas las temperaturas se fueron hacia el promedio a excepción de el MLX obj ya que se la sacó de la calibración.
+  
+
+
+
+
+
+Haciendo más experimentos como el mencionado anteriormente, se detectó que la principal causa de la diferencia de temperatura al momento de aplicar algún cambio es debido a que el sensor dht11 es mucho más lento, como se ve en la imagen de abajo, el dht sube más lentamente la temperatura en comparación con el AHT, hasta su punto de equilibrio.
+  
+
+Cuando saco la mano de los sensores la forma es mas parecida pero aun así el AHT va más rápido
+  
+
+
+
+
+
+
+________________
+
+
+Fecha: 29/10/2025
+Actividad: Prueba de suavizado con media móvil
+ Se decidió experimentar agregando una media móvil de 10 muestras para suavizar los “dientes de sierra” en las lecturas de los sensores. Esta mejora se aplicó a todos los sensores excepto al los DHT que ya son bastante estables y a el objetivo del sensor infrarrojo (MLX90614) este ultimo es  para tener una forma de comparar la diferencia de tenerlo con media movil o no..
+El resultado permitió una mejor visualización de la diferencia de temperatura entre los sensores, reduciendo las variaciones abruptas y haciendo más clara la tendencia general de los datos.
+Durante esta prueba, se desactivó la calibración automática, ya que se detectó que con el paso del tiempo esta deja de ser útil: los sensores tienden a separarse nuevamente en sus valores, perdiendo el efecto de la calibración inicial.
+Observaciones:
+                                                                                                                                                                                                                                                                                                                                                                  * La gráfica resultante muestra un descenso más limpio y estable en las curvas de temperatura.
+
+                                                                                                                                                                                                                                                                                                                                                                  * El suavizado facilita comparar el comportamiento entre sensores internos y externos.
+
+  
+
+
+
+
+
+Entrada de Bitácora – Conexión y Prueba del Sistema con el Tacho y Resistencias Cerámicas
+Fecha: 10/11/2025
+Actividad realizada:
+ Se realizó la conexión completa del sistema con el tacho y las tres resistencias cerámicas. Una vez verificada la correcta instalación eléctrica y de los sensores, se ejecutó el sistema para comprobar su funcionamiento.
+Durante la prueba, las resistencias se activaron y comenzaron a generar calor según lo esperado. El sensor de temperatura registró un incremento rápido, alcanzando valores elevados. Como resultado, el sistema respondió correctamente al detectar la temperatura alta, provocando el apagado de las resistencias y, por consiguiente, una reducción en la temperatura medida.
+Se adjunta captura del gráfico que muestra la variación de las temperaturas en el tiempo, donde se observa claramente la fase de calentamiento y el posterior descenso debido a la acción del control.
+  
+
+Observaciones:
+                                                                                                                                                                                                                                                                                                                                                                     * El sistema respondió adecuadamente ante temperaturas elevadas.
+
+                                                                                                                                                                                                                                                                                                                                                                     * Se recomienda repetir la prueba con diferentes configuraciones de control para optimizar la respuesta térmica.
+
+
+
+________________
+
+
+Entrada de Bitácora -Revisión técnica y orientaciones del profesor para la entrega final
+
+
+Fecha : 12/11/2025
+
+
+Actividad realizada: 
+
+
+Durante la charla con el profesor, el grupo comentó los problemas de falsos contactos detectados en las pruebas. El profesor propuso como solución usar cables más largos, aunque luego se comprobó que la causa real fue un cortocircuito que dañó el módulo relé y el ESP32. Ambos componentes fueron reemplazados, y el sistema volvió a funcionar correctamente.
+
+
+El profesor también indicó:
+
+
+-Incluir el esquemático recortado en el informe, mostrando solo el circuito principal.
+
+
+-Agregar el gráfico de los dos núcleos del ESP32 (Core 0: Wi-Fi/TCP-IP; Core 1: lectura de sensores, control y servidor web).
+
+
+-Mencionar las funciones presentes tanto en los archivos .h como en el main.ino.
+
+
+-Indicar que cada versión del firmware se guarda en su propia carpeta.
+
+
+Luego se repitió la prueba con el balde y las tres resistencias cerámicas, haciendo referencia a la prueba registrada en la bitácora del mismo día (10/11/2025).
+
+
+Se mantuvieron los límites configurados en la interfaz: MLX90614 = 90 °C (temperatura del objeto) y AHT10 = 40 °C (temperatura interna).
+
+
+Durante el ensayo, el MLX90614 registró aproximadamente 54 °C, mientras que los sensores internos (AHT10 y DHT11) marcaron cerca de 44 °C, y los externos entre 27 °C y 28 °C, mostrando un gradiente térmico esperado —es decir, una diferencia natural de temperatura entre el interior más caliente y el exterior más frío, producto de la transferencia de calor hacia el ambiente.
+
+
+Llega a pasar que al  alcanzar la temperatura configurada y al probar distintos valores de ajuste, el sistema bloquea el relé, evitando el encendido hasta que la temperatura desciende unos grados.
+Las resistencias se apagan automáticamente y luego se reactivan, manteniendo la temperatura dentro de un rango seguro y estable.
+
+
+
+
+________________
+
+
+Entrada de Bitácora — Experimento de Calentamiento, Estabilización Térmica y Verificación del Relé
+
+
+Fecha: 4-12-2025
+
+
+Objetivo de esta entrada : 
+
+
+El profesor indicó que no corresponde repetir los experimentos extensos del grupo anterior, ya que su objetivo era estudiar el calentamiento y enfriamiento completo del sistema durante más de una hora. En nuestro caso, la meta es verificar el correcto funcionamiento del control térmico, medir la estabilidad del sistema y evaluar las mejoras realizadas en el prototipo, no rehacer la investigación original.
+
+
+Para ello, debemos realizar un experimento controlado configurando los límites establecidos: 70 °C para el MLX90614 (temperatura del objeto) y 40 °C para el AHT10 interno. Estos valores se ajustan desde la interfaz web. Cuando el MLX alcanza los 70 °C o el AHT10 llega a 40 °C, el relé debe apagarse automáticamente. El objetivo es observar en qué momento se produce el corte y cuánto tarda el sistema en entrar en un comportamiento estable.
+
+
+La estabilización no significa mantener una temperatura fija, sino alcanzar un ciclo repetitivo donde las resistencias calientan hasta el límite, el relé corta, la temperatura desciende y el relé vuelve a encender. Este patrón, visible como un “serrucho” en la gráfica, indica que el sistema está funcionando bajo control y sin riesgo de sobrecalentamiento.
+
+
+Medir el tiempo hasta la estabilización permite confirmar que el control térmico actúa correctamente, que los sensores responden bien y que el sistema es seguro. La duración del experimento no es fija: depende de la masa térmica del tacho, la potencia de las resistencias, la ventilación y la temperatura ambiente. En general, la estabilización suele aparecer entre 20 y 40 minutos, aunque el ciclo de corte puede comenzar antes, entre los 15 y 25 minutos.
+
+
+Para registrarlo, se encienden las resistencias, se observan varios ciclos de encendido y apagado y se mide el tiempo total desde el inicio hasta que el patrón se vuelve repetitivo. Ese es el tiempo de estabilización.
+
+
+Finalmente, se verificó que el relé está alimentado correctamente con 5 V en el módulo, mientras que el pin de control del ESP32 entrega 3.3 V, lo cual es seguro y compatible con este tipo de relé, garantizando una conmutación estable durante el experimento.
+
+
+
+
+
+
+
+
+
+
+________________
+
+
+Fecha: 07/12/2025
+Título: correccion de implementacion de Control de Relé y Bloqueos de Seguridad por ventana de 5 grados
+
+
+Modificaciones de Código y Comportamiento
+                                                                                                                                                                                                                                                                                                                                                                        * temperaturaF2EA.ino:
+                                                                                                                                                                                                                                                                                                                                                                        * Se corrigio control (relayRequested) por corte por temperatura (relayCutByTemp), con ventana de 5 °C (RELAY_VENTANA) para reencender al enfriar.
+                                                                                                                                                                                                                                                                                                                                                                        * El mensaje JSON de /sensordata refleja estado/petición/cortes.
+                                                                                                                                                                                                                                                                                                                                                                        * web_page_core.h:
+                                                                                                                                                                                                                                                                                                                                                                        * El botón muestra el estado solicitado (relayRequested), no solo la salida física, para evitar confusión cuando está cortado por límite.
+Comportamiento resultante:
+
+
+Al encender el sistema el relé queda abierto; solo se cierra tras el clic “Encender Relé” y si los límites están configurados; corta al superar el límite MLX y vuelve a cerrar al bajar 5 °C; se bloquea definitivamente ante límite crítico AHT; la lógica es compatible con tu módulo activo en alto.
+
+
+
+
+Fecha: 01/10/2025
+
+
+Título: Mejoras en la Interfaz Web y Comunicación del Sistema de Control
+
+
+Referencia: Continuación de tareas de desarrollo/mejora
+
+
+Objetivo
+
+
+Implementar mejoras en la interfaz web (UI) para una visualización más compacta y clara de los datos de estado, y perfeccionar la mensajería del relé para ofrecer mejor feedback al usuario sobre su estado de bloqueo y corte por temperatura.
+
+
+Lo realizado
+
+
+Se realizaron las siguientes actualizaciones en la interfaz web y en la lógica de mensajería del sistema:
+                                                                                                                                                                                                                                                                                                                                                                        * Interfaz Web (UI):
+                                                                                                                                                                                                                                                                                                                                                                        * Se creó un panel para el Estado, mostrando la información clave.
+                                                                                                                                                                                                                                                                                                                                                                        * Los datos de Tiempo/Delta se movieron a este nuevo panel.
+                                                                                                                                                                                                                                                                                                                                                                        * Los sensores se agruparon en tarjetas temáticas (Directo/Interno/Externo) y el sensor infrarrojo MLX se separó como un objeto distinto para su visualización.
+                                                                                                                                                                                                                                                                                                                                                                        * Interacciones del Usuario:
+                                                                                                                                                                                                                                                                                                                                                                        * Los botones de control ahora se deshabilitan automáticamente mientras la orden se está enviando al ESP32.
+                                                                                                                                                                                                                                                                                                                                                                        * Se implementó un mecanismo de feedback visual y un timeout (fijado en 12 segundos) para asegurar que el usuario reciba una respuesta después de una interacción.
+                                                                                                                                                                                                                                                                                                                                                                        * Mensajería del Relé:
+                                                                                                                                                                                                                                                                                                                                                                        * Se expusieron dos nuevas variables al frontend para mejorar el diagnóstico y la comprensión del estado del sistema:
+                                                                                                                                                                                                                                                                                                                                                                        * relayLocked: Indica si el relé está bloqueado (por alguna condición de seguridad o lógica).
+                                                                                                                                                                                                                                                                                                                                                                        * relayCutByTemp: Indica si el relé se ha cortado automáticamente debido a la superación de un límite de temperatura.
+
+
+________________
+
+
+9/12/25
+
+
+Puse unas líneas de separación al menos para que las últimas entradas de esta bitácora se puedan identificar o separar mejor.
+
+
+Habiendo mirado lo más importante del informe y de la entrega en general, necesitaría que completen lo que en el formato del informe se mencionaba como:
+
+
+“...debe haber una descripción de cómo replicar el proyecto…“
+
+
+En particular, les pediría que armen una guía de instalación y configuración del proyecto en el IDE de Aduino incluyendo:
+
+
+                                                                                                                                                                                                                                                                                                                                                                        1. Un único .tar/.gz/.zip/… que al desplegarse/descomprimirse tenga todo lo necesario para que el IDE compile y pueda cargar el programa en una ESP32 como la que tiene en proyecto.
+                                                                                                                                                                                                                                                                                                                                                                        2. Indicar las dependencias de bibliotecas externas, de dónde se obtienen e incluirlas en la entrega para ser instaladas/usadas en el proyecto.
+                                                                                                                                                                                                                                                                                                                                                                        3. Armar una guía paso a paso de cómo instalar y configurar el IDE para llegar a que se pueda cargar el proyecto en la ESP32. Mi sugerencia es que lo hagan uds. mismos empezando con un IDE sin nada instalado y puedan seguir su propia guía paso a paso al menos hasta el punto en que el IDE compile correctamente.
+
+
+Mi sugerencia es que me envíen un .pdf con la guía paso a paso y dentro de esa guía la URL para bajar todo lo necesario para la replicación del software del proyecto. Si lo hacen ahora que lo tienen recién terminado no debería costarles mucho, pero si quieren tomarse todo el resto de diciembre, no hay problema, porque de todas maneras voy a terminar de evaluar a inicios de Febrero del año que viene, si Dios quiere.
